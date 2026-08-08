@@ -1,0 +1,73 @@
+{
+  "package": "asyncio_guid",
+  "generated_at_utc": "2026-07-25T05:05:00Z",
+  "source_pages": [
+    "https://bbc.github.io/cloudfit-public-docs/asyncio/asyncio-part-1.html",
+    "https://bbc.github.io/cloudfit-public-docs/asyncio/asyncio-part-2.html",
+    "https://bbc.github.io/cloudfit-public-docs/asyncio/asyncio-part-3.html",
+    "https://bbc.github.io/cloudfit-public-docs/asyncio/asyncio-part-4.html",
+    "https://bbc.github.io/cloudfit-public-docs/asyncio/asyncio-part-5.html"
+  ],
+  "files": [
+    {
+      "path": "01_基础概念与模式.md",
+      "size_bytes": 9295,
+      "sha256": "28f58c367f7b5d0a8f675cafa5275ebcf8d86ac5711f760f05cb49bc95f6adbb"
+    },
+    {
+      "path": "02_可等待对象_任务与Future.md",
+      "size_bytes": 15980,
+      "sha256": "aa8f321ddb90c7422ab458d0efd9f11bffe8bd593f74090f9a50945388dfaa29"
+    },
+    {
+      "path": "03_异步上下文管理器与异步迭代器.md",
+      "size_bytes": 14832,
+      "sha256": "3447aa56933620b3a9e5fe21c0532a9797499269235db8aedbb6e6696da5c471"
+    },
+    {
+      "path": "04_库支持.md",
+      "size_bytes": 11211,
+      "sha256": "1d665df5c2aeea2dee934682f46fa52b0706bf840a7849e1d428e3f6f3dcab67"
+    },
+    {
+      "path": "05_混合同步与异步代码.md",
+      "size_bytes": 13971,
+      "sha256": "8195b51c8892f8a4d0e7ee2e7322bd703c7687437602d9c3d7fb74a637798dd3"
+    },
+    {
+      "path": "NOTICE.md",
+      "size_bytes": 908,
+      "sha256": "16109628b634d24587f91efee11e2e065f99419941e33a32609c25f5c3534926"
+    },
+    {
+      "path": "README.md",
+      "size_bytes": 1371,
+      "sha256": "ed95e7bc3300e9bac309eae8c41510fd113dea1b3c796c56ad82677727990c1d"
+    },
+    {
+      "path": "SOURCES.md",
+      "size_bytes": 1076,
+      "sha256": "b73629f88d4e7a3dc572a31ff504747b2c07aaa50082d18243f1892630874f86"
+    },
+    {
+      "path": "assets/SubVsCoRoutines.png",
+      "size_bytes": 130114,
+      "sha256": "36f49f205815f079d24c44be40fccd60e740aab64f41dea429044abfa8bc964f"
+    },
+    {
+      "path": "asyncio_guide_zh.html",
+      "size_bytes": 324502,
+      "sha256": "537b77ddb22210e9fbc1cbd4eaf469b495a487d68f7bd85f36d9a99631a8f315"
+    },
+    {
+      "path": "asyncio_guide_zh.md",
+      "size_bytes": 65475,
+      "sha256": "82b0e42e382033c52b7c9a4e228b302bebc9f3d2cf075b6d255a4cfbcab90621"
+    },
+    {
+      "path": "style.css",
+      "size_bytes": 631,
+      "sha256": "55df0524390c55e457f863ddc378c72465d8fbfd4a6781992cb05cbb8c36a4c5"
+    }
+  ]
+}
