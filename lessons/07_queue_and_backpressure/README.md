@@ -2,15 +2,21 @@
 
 ## 进入本课前
 
-你已经学过 active concurrency、backlog、Semaphore、worker 和 rate limit。
+你已经学过 active concurrency、backlog、Semaphore、worker、downstream 和 rate limit。
 
 ## 本课新增术语
 
 - **Queue（队列）**：在多份 async 工作之间临时存放待处理 item 的容器；一边放进去，另一边取出来处理。
 - **producer（生产者）**：负责产生待处理 item，并把它们放进 Queue 的代码。
 - **consumer（消费者）**：从 Queue 取出 item 并处理的代码；本课的 worker 就是 consumer。
-- **bounded Queue（有容量上限的队列）**：设置了 `maxsize`，最多只允许一定数量 item 在 Queue 里等待。
-- **backpressure（反压）**：downstream 处理不过来时，让上游也慢下来，而不是继续无限堆积等待工作。
+- **upstream（上游）**：更早产生数据或工作的那一侧；本课中 producer 和它读取的数据源都属于 upstream。
+- **`maxsize`**：Queue 允许同时存放多少个等待中 item 的容量上限。
+- **bounded Queue（有容量上限的队列）**：设置了 `maxsize`，因此等待中的 item 数量不能无限增长的 Queue。
+- **backpressure（反压）**：downstream 处理不过来时，让 upstream 也慢下来，而不是继续无限堆积等待工作。
+- **`queue.put(item)`**：把一个 item 放进 Queue；bounded Queue 已满时，这一步会等待。
+- **`queue.get()`**：从 Queue 取出一个 item；Queue 为空时，这一步会等待。
+- **`queue.task_done()`**：告诉 Queue“刚才取出的一个 item 已经真正处理完成”。
+- **`queue.join()`**：等待所有已经放进 Queue 的 item 都被标记为处理完成。
 - **AsyncIterable（异步可迭代对象）**：一种逐项取得数据时允许等待的数据源；请求下一项不一定能立刻拿到结果。
 - **`async for`**：逐项读取 AsyncIterable 的 Python 语法；每次取得下一项时都允许 async 等待。
 - **sentinel（结束标记）**：放进 Queue 的一个特殊值，用来告诉 consumer“已经没有新工作了”。
@@ -22,7 +28,7 @@
 学完本节，你应该能够：
 
 - 使用 bounded Queue 连接 producer 与 consumer；
-- 解释 backpressure 为什么需要传回 producer；
+- 解释 backpressure 为什么需要传回 upstream；
 - 区分 active concurrency 上限与 backlog 上限；
 - 使用 `task_done()` / `join()` 表达“已处理完成”；
 - 使用 sentinel 或明确结束规则让 worker 干净退出；
@@ -36,7 +42,7 @@
 
 假设 producer 每秒产生 10 万条 item，而 consumer 每秒只能处理 1 万条。只要这个速度差长期存在，backlog 就会不断变大。
 
-系统不能靠“多给一点内存”永久解决这个问题。必须让等待区有上限，并在 downstream 跟不上时让 producer 感受到压力。
+程序不能靠“多给一点内存”永久解决这个问题。必须让等待区有上限，并在 downstream 跟不上时让 upstream 感受到压力。
 
 ## 核心理论
 
@@ -61,7 +67,7 @@ Producer 只负责产生 item；consumer 只负责处理 item；Queue 负责在�
 queue = asyncio.Queue(maxsize=10)
 ```
 
-可以先理解成：Queue 最多只允许 10 个 item 在里面等待。
+这里表示：Queue 最多只允许 10 个 item 在里面等待。
 
 当 Queue 已经满时：
 
@@ -113,7 +119,7 @@ async for item in source:
 items = [item async for item in source]
 ```
 
-再慢慢入队。这样等于先把全部内容一次性读入内存，Queue 已经来不及限制上游读取。
+再慢慢入队。这样等于先把全部内容一次性读入内存，Queue 已经来不及限制 upstream 读取。
 
 ### 5. `get()` 只表示“取走”，不表示“处理完成”
 
@@ -127,10 +133,7 @@ finally:
     queue.task_done()
 ```
 
-这里：
-
-- `get()`：把 item 从 Queue 取出来；
-- `task_done()`：告诉 Queue，这个已经取出的 item 真正处理结束了。
+`get()` 把 item 从 Queue 取出来；真正处理完成后，再调用 `task_done()`。
 
 另一边可以：
 
@@ -145,8 +148,8 @@ await queue.join()
 如果有固定数量 worker，可以在 producer 结束后放入结束标记：
 
 ```text
-normal item
-normal item
+普通 item
+普通 item
 SENTINEL
 SENTINEL
 ```
@@ -171,8 +174,8 @@ Sentinel 不是 asyncio 特殊对象；它只是双方约定的特殊值。
 ## 脑内执行模型
 
 ```text
-producer: put put put [Queue full......wait] put
-consumer:       get ─ work ─ done ─ get ─ work
+producer: put put put [Queue 已满……等待] put
+consumer:       get ─ 处理 ─ 完成 ─ get ─ 处理
                          时间 →
 ```
 
@@ -192,7 +195,7 @@ source 暂时不再继续读
 
 ## 常见误解
 
-- **误区：** Queue 越大，系统一定处理得越快。  
+- **误区：** Queue 越大，程序一定处理得越快。  
   **更准确：** 更大的 Queue 往往只是允许更多 backlog 在内存里等待。
 
 - **误区：** 有 Semaphore 就不需要 Queue。  
@@ -213,8 +216,8 @@ source 暂时不再继续读
 ## 本节规则总结
 
 1. Producer 产生 item，consumer 处理 item，Queue 在中间传递。
-2. Bounded Queue 用 `maxsize` 限制 backlog。
-3. Queue 满时 producer 等待，就是 backpressure 正在工作。
+2. `maxsize` 是 Queue 的 backlog 容量上限。
+3. Queue 满时 producer 的 `put()` 等待，就是 backpressure 正在工作。
 4. Producer 应逐项读取 AsyncIterable，不要提前把全部内容读入内存。
 5. `get()` 表示取走；`task_done()` 表示处理完成；`join()` 等待所有已入队 item 完成。
 6. Sentinel 可以表达“没有新工作了”。
@@ -223,22 +226,23 @@ source 暂时不再继续读
 ## 关键问题
 
 1. Queue 在 producer 与 consumer 之间负责什么？
-2. bounded Queue 的 `maxsize` 限制的是 active concurrency 还是 backlog？
-3. backpressure 用白话怎样解释？
-4. 为什么 Queue 满时让 `put()` 等待是合理行为？
-5. AsyncIterable 与普通 iterable 的关键差别是什么？
-6. `async for` 为什么适合逐项读取 AsyncIterable？
-7. 为什么不能先把 AsyncIterable 全部读完再入队？
-8. `get()`、`task_done()`、`join()` 分别表达什么？
-9. sentinel 解决什么问题？
-10. drain 与立即丢弃剩余工作有什么区别？
-11. pipeline 在本课里是什么意思？
+2. upstream 与 downstream 分别是哪一侧？
+3. bounded Queue 的 `maxsize` 限制的是 active concurrency 还是 backlog？
+4. backpressure 用白话怎样解释？
+5. 为什么 Queue 满时让 `put()` 等待是合理行为？
+6. AsyncIterable 与普通 iterable 的关键差别是什么？
+7. `async for` 为什么适合逐项读取 AsyncIterable？
+8. 为什么不能先把 AsyncIterable 全部读完再入队？
+9. `get()`、`task_done()`、`join()` 分别表达什么？
+10. sentinel 解决什么问题？
+11. drain 与立即丢弃剩余工作有什么区别？
+12. pipeline 在本课里是什么意思？
 
 ## 场景命题
 
 实现一个 producer → bounded Queue → 固定数量 worker 的 pipeline。
 
-Source 很快时，producer 必须被 Queue 的 backpressure 限制，不能提前把所有 job 读进内存。
+数据源很快时，producer 必须被 Queue 的 backpressure 限制，不能提前把所有 job 读进内存。
 
 ## 验收
 
@@ -248,7 +252,7 @@ Source 很快时，producer 必须被 Queue 的 backpressure 限制，不能提�
 - producer 的领先量有明确上界；
 - Queue 满时 producer 确实等待；
 - worker 能在没有新工作后干净退出；
-- 没有通过“先把全部 source 读进内存”绕过 backpressure。
+- 没有通过“先把全部数据源读进内存”绕过 backpressure。
 
 仓库参考实现：
 
