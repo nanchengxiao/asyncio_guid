@@ -6,11 +6,12 @@
 
 ## 本课新增术语
 
-- **cancellation（取消）**：上层明确表示“这份异步工作现在不需要继续了”的控制方式。
+- **cancellation（取消）**：上层明确表示“这份 async 工作现在不需要继续了”的控制方式。
 - **`task.cancel()`**：向某个 Task 发出 cancellation 请求的方法；它不是立即强制杀死 Task。
 - **`CancelledError`**：Task 真正响应 cancellation 时看到的特殊异常。
 - **cancellation propagation（取消传播）**：当前层收到 cancellation 后，不把它伪装成成功，而是让调用自己的上一层继续知道这份工作被取消。
 - **cooperative cancellation（合作式取消）**：Task 需要自己运行到能够响应 cancellation 的位置，才能真正停下来；上层不会随时强行把它截断。
+- **`raise`**：主动抛出异常；在 `except` 中单独写 `raise`，表示把刚捕获到的异常继续向外抛出。
 
 ## 本节目标
 
@@ -24,9 +25,9 @@
 
 ## 为什么需要学习它
 
-异步工作并不总会自然跑到结尾。
+Async 工作并不总会自然跑到结尾。
 
-调用者可能已经离开页面，父业务操作可能已经失败，服务也可能决定不再需要某个结果。此时继续做无意义工作会浪费资源；更严重的是，如果代码把 cancellation 当成普通成功吞掉，上层就会得到错误的业务判断。
+调用者可能已经不再需要结果，父业务 operation 也可能已经失败。此时继续做无意义工作会浪费 resource；更严重的是，如果代码把 cancellation 当成普通成功吞掉，上层就会得到错误的业务判断。
 
 ## 核心理论
 
@@ -58,7 +59,7 @@ async def upload():
 这就是 cooperative cancellation：
 
 ```text
-上层发请求
+上层发出 cancellation 请求
     ↓
 Task 继续得到一次执行机会
     ↓
@@ -82,7 +83,7 @@ async def upload():
 
 无论正常结束、普通异常，还是 cancellation，只要控制流离开这段 `try`，`finally` 都负责收尾。
 
-### 4. 捕获 `CancelledError` 后通常还要继续向外传播
+### 4. 捕获 `CancelledError` 后通常还要继续向外 propagation
 
 如果只是为了记录：
 
@@ -94,7 +95,7 @@ except asyncio.CancelledError:
     raise
 ```
 
-这里重新 `raise` 很重要。
+这里单独写 `raise` 很重要：它让同一个 cancellation 继续向调用者传播。
 
 如果改成：
 
@@ -107,10 +108,8 @@ except asyncio.CancelledError:
 
 ### 5. Cancellation 与普通业务失败表达不同意思
 
-可以先这样区分：
-
 ```text
-普通异常      → 工作尝试了，但发生失败
+普通异常     → 工作尝试了，但发生失败
 cancellation → 上层决定这份工作不需要继续
 ```
 
@@ -119,16 +118,16 @@ cancellation → 上层决定这份工作不需要继续
 ## 脑内执行模型
 
 ```text
-Task:   work ─ await .... CancelledError ─ finally cleanup ─ cancelled
-caller:              cancel() ───────────── await task ─ 看见 cancellation
+Task：   工作 ─ await .... CancelledError ─ finally cleanup ─ 结束
+调用者：              cancel() ───────────── await Task ─ 看见 cancellation
 ```
 
 关键顺序：
 
-1. caller 调用 `cancel()`；
+1. 调用者调用 `cancel()`；
 2. Task 之后才真正观察到 `CancelledError`；
 3. Task 先执行 `finally` cleanup；
-4. caller 等待 Task 时继续看见 cancellation。
+4. 调用者等待 Task 时继续看见 cancellation。
 
 ## 常见误解
 
@@ -152,9 +151,10 @@ caller:              cancel() ───────────── await task
 1. `cancel()` 是 cancellation 请求，不是强制终止。
 2. Task 通过 `CancelledError` 观察 cancellation。
 3. Cancellation 通常应该继续向调用者 propagation。
-4. Cleanup 放在 `finally`。
-5. 长时间不暂停的代码无法及时响应 cooperative cancellation。
-6. 不要把 cancellation 伪装成普通成功。
+4. `raise` 可以让已经捕获的 cancellation 继续向外传播。
+5. Cleanup 放在 `finally`。
+6. 长时间不暂停的代码无法及时响应 cooperative cancellation。
+7. 不要把 cancellation 伪装成普通成功。
 
 ## 关键问题
 
