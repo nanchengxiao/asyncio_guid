@@ -1,4 +1,4 @@
-# Lesson 02 — 让多份异步工作交替推进
+# Lesson 02 — 让多份 async 工作交替推进
 
 ## 进入本课前
 
@@ -6,14 +6,14 @@
 
 ## 本课新增术语
 
-- **Event Loop（事件循环）**：asyncio 的调度中心，负责让当前可以继续的异步工作轮流向前执行。
+- **Event Loop（事件循环）**：asyncio 的调度中心，负责让当前可以继续的 async 工作轮流向前执行。
 - **Task（任务）**：被 Event Loop 正式登记、拥有自己执行进度的一份 coroutine 工作。
 - **scheduling（调度）**：决定接下来让哪一个当前可以继续的 Task 向前执行。
 - **concurrency（并发）**：多份工作在同一段时间内都处于进行状态；一份工作等待时，另一份可以推进。
-- **I/O（输入/输出）**：网络、数据库、文件等需要与程序外部交换数据的操作，通常包含等待时间。
-- **thread（线程）**：程序的一条执行路径；本课只需要知道 Event Loop 通常在一条线程里运行。
+- **I/O（输入/输出）**：程序需要从外部取得数据或把数据交出去的操作；这类操作常常包含等待，例如读取文件。
+- **thread（线程）**：程序的一条执行路径；本课只需要知道 Event Loop 通常在一条 thread 里运行。
 - **`asyncio.create_task()`**：把 coroutine object 包装成 Task，并交给当前 Event Loop 管理的工具。
-- **`asyncio.run()`**：在程序最外层创建并运行 Event Loop，让指定的异步入口一直执行到结束的工具。
+- **`asyncio.run()`**：在程序最外层创建并运行 Event Loop，让指定的 async 入口一直执行到结束的工具。
 
 ## 本节目标
 
@@ -22,8 +22,8 @@
 - 解释 Event Loop 和 Task 分别负责什么；
 - 说明 concurrency 为什么来自多个同时存活的 Task；
 - 预测 `create_task()` 后的基本执行时间线；
-- 识别可以并发的独立 I/O；
-- 解释为什么 `await` 数量本身不能证明代码已经并发。
+- 识别可以 concurrency 的独立 I/O；
+- 解释为什么 `await` 数量本身不能证明多份等待已经重叠。
 
 ## 为什么需要学习它
 
@@ -44,9 +44,9 @@ user_coro = fetch_user()
 orders_coro = fetch_orders()
 ```
 
-这里得到两个 coroutine object，但并不能仅凭这两行判断它们会并发推进。
+这里得到两个 coroutine object，但并不能仅凭这两行判断它们会 concurrency 推进。
 
-要让它们成为两份可以被 Event Loop 分别调度的工作，可以创建 Task：
+要让它们成为两份可以被 Event Loop 分别 scheduling 的工作，可以创建 Task：
 
 ```python
 user_task = asyncio.create_task(fetch_user())
@@ -59,11 +59,11 @@ orders_task = asyncio.create_task(fetch_orders())
 coroutine object
       ↓ create_task(...)
 Task
-      ↓ 由它调度
+      ↓ 由它 scheduling
 Event Loop
 ```
 
-### 2. 多个 Task 才给调度器多个独立推进对象
+### 2. 多个 Task 才给 Event Loop 多个独立推进对象
 
 ```python
 user_task = asyncio.create_task(fetch_user())
@@ -77,9 +77,9 @@ orders = await orders_task
 
 两个 Task 都已经存在时，一个 Task 进入 I/O 等待，Event Loop 就可以推进另一个 Task。这样两段等待时间可以重叠，总耗时可能接近 100ms，而不是约 200ms。
 
-### 3. `create_task()` 不会强行打断当前代码
+### 3. `create_task()` 不会立刻中断当前代码
 
-创建 Task 后，新 Task 已经登记给 Event Loop，但当前正在执行的代码不会立刻被“抢走”。
+创建 Task 后，新 Task 已经登记给 Event Loop，但当前正在执行的代码不会因为这一行立刻停下来。
 
 当前 Task 需要先走到一个能够暂停或结束的位置，Event Loop 才有机会安排其他 Task 向前执行。
 
@@ -127,7 +127,7 @@ asyncio.run(main())
       ↓
 运行 main()
       ↓
-不断调度 Task
+不断 scheduling Task
       ↓
 main() 结束
       ↓
@@ -145,6 +145,8 @@ orders Task:                  └─ run ─ wait I/O .... finish
                            时间 →
 ```
 
+图里的 `run / wait / finish` 只是“执行 / 等待 / 结束”的短标签，不是新的机制。
+
 关键问题不是“代码里有几个 `await`”，而是：
 
 > 同一时间是否存在多个可以被 Event Loop 分别推进的 Task？
@@ -152,27 +154,27 @@ orders Task:                  └─ run ─ wait I/O .... finish
 ## 常见误解
 
 - **误区：** Task 就是 thread。  
-  **更准确：** Task 是 asyncio 的异步工作单位；多个 Task 通常仍由同一条 Event Loop thread 合作式推进。
+  **更准确：** Task 是 asyncio 的工作单位；多个 Task 通常仍由同一条 Event Loop thread 轮流推进。
 
-- **误区：** `create_task()` 一调用，新 Task 就立刻打断当前代码。  
+- **误区：** `create_task()` 一调用，新 Task 就立刻中断当前代码。  
   **更准确：** 当前工作要先把执行机会交回 Event Loop。
 
 - **误区：** 两个连续 `await` 就是 concurrency。  
   **更准确：** 如果第二个调用直到第一个完成后才开始，仍然是顺序等待。
 
 - **误区：** Event Loop 能自动打断长时间运行的普通 Python 代码。  
-  **更准确：** 它不能强制抢占一段一直不暂停的普通 Python 代码。
+  **更准确：** 一段一直不暂停的普通 Python 代码会持续占着当前 thread。
 
 - **误区：** concurrency 越多越好。  
-  **更准确：** 本课只建立执行模型；资源容量会在后面专门处理。
+  **更准确：** 本课只建立执行模型；资源容量会在后面的课程专门处理。
 
 ## 本节规则总结
 
 1. Event Loop 负责 scheduling。
 2. Task 是可以被独立 scheduling 的 coroutine 工作。
 3. 多个同时存活的 Task 才形成 asyncio 的 concurrency 结构。
-4. concurrency 的主要收益来自重叠等待时间。
-5. `create_task()` 创建独立 Task，但不会立刻抢占当前代码。
+4. Concurrency 的主要收益来自重叠等待时间。
+5. `create_task()` 创建独立 Task，但不会立刻中断当前代码。
 6. 先判断 data dependency，再决定哪些工作值得同时开始。
 
 ## 关键问题
@@ -186,17 +188,17 @@ orders Task:                  └─ run ─ wait I/O .... finish
 
 ## 场景命题
 
-Dashboard 页面同时需要 user 与 orders。两份数据只共享同一个 `user_id`，彼此没有 data dependency。
+一个页面同时需要 user 与 orders。两份数据只共享同一个 `user_id`，彼此没有 data dependency。
 
 请把不必要的顺序等待改成真正 concurrency，并保证函数返回前自己创建的两份工作都已经结束。
 
 ## 验收
 
-测试会使用可控延迟验证：
+测试会使用可控等待时间验证：
 
 - user 与 orders 结果正确；
 - 两段等待确实发生重叠；
-- 总耗时明显低于顺序等待基线；
+- 总耗时明显低于顺序等待；
 - 函数返回时没有遗留本场景创建的工作。
 
 仓库参考实现：
