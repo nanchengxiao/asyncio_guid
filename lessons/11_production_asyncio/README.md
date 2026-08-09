@@ -11,14 +11,14 @@
 - **shutdown（关闭流程）**：程序从“还在正常接收和处理工作”走到“停止运行”的整个过程。
 - **graceful shutdown（优雅关闭）**：shutdown 时先按业务承诺处理已经开始的工作和 resource，再真正退出，而不是直接粗暴丢弃所有工作。
 - **attempt（一次尝试）**：针对同一业务 operation 发起的一次具体调用；retry 会产生新的 attempt。
-- **transient failure（暂时性失败）**：过一会儿再试有可能恢复的失败，例如短暂网络故障。
+- **transient failure（暂时性失败）**：过一会儿再试有可能恢复的失败，例如短暂 network 故障。
 - **permanent failure（持久性失败）**：再次立即尝试通常也不会改变结果的失败，例如明确的参数错误。
-- **side effect（副作用）**：会改变外部状态的动作，例如写数据库、扣款、发送消息。
+- **side effect（副作用）**：会改变外部状态的动作，例如写入数据、扣款、发送消息。
 - **idempotency（幂等性）**：同一个业务 request 被重复执行时，不会重复产生本不该重复的 side effect。
 - **QPS（Queries Per Second，每秒请求数）**：每秒启动多少次 request 的一种速率表达方式。
 - **rate limiter（速率限制器）**：真正执行 rate limit 规则、决定某个新 request 现在能不能启动的控制组件。
 - **gate（闸门）**：本课对“进入受限 resource 前必须先获得许可”的控制点的白话称呼。
-- **writer（写入器）**：负责把处理结果写入数据库、文件或其他存储位置的处理环节。
+- **writer（写入器）**：负责把处理结果写入文件或其他存储位置的处理环节。
 - **counter（计数器）**：只记录某类事件累计发生了多少次的数字。
 - **metrics（指标）**：用数字持续记录程序状态，例如收到多少 job、成功多少、失败多少、retry 多少。
 - **structured logging（结构化日志）**：用“事件名 + 明确字段”记录日志，让程序可以按字段查询和分析。
@@ -35,7 +35,7 @@
 - 为每个外部调用 attempt 设置 timeout，并限制 retry 条件与次数；
 - 区分 transient failure 与 permanent failure；
 - 解释 idempotency 为什么能保护重复执行；
-- 限制 writer 的 resource capacity；
+- 限制 writer 的 resource 容量；
 - 使用 metrics 与 structured logging 建立基本 observability；
 - 识别 task leak、变慢的 downstream 和 retry storm 的信号。
 
@@ -115,7 +115,7 @@ QPS = 10
 ```text
 attempt 1 → timeout
 attempt 2 → transient failure
-attempt 3 → success
+attempt 3 → 成功
 ```
 
 每个 attempt 都应该有明确 timeout，否则其中一次调用可能无限等下去，导致整个 retry 策略失去边界。
@@ -130,7 +130,7 @@ attempt 3 → success
 总等待时间才有可解释上界
 ```
 
-### 4. 只对明确 failure 类型 retry
+### 4. 只对明确的失败类型 retry
 
 Retry 不能写成：
 
@@ -142,12 +142,10 @@ except Exception:
 更合理的思路是先分类：
 
 ```text
-transient failure   → 可能适合 retry
-permanent failure   → 通常不 retry
-caller cancellation → 不应当 retry
+transient failure     → 可能适合 retry
+permanent failure     → 通常不 retry
+调用者发来的 cancellation → 不应当 retry
 ```
-
-这里的 **caller（调用者）** 已经是前面课程一直使用的普通角色名：谁调用当前函数，谁就是 caller。
 
 本课的原则是：
 
@@ -155,7 +153,7 @@ caller cancellation → 不应当 retry
 
 ### 5. Retry 会带来重复执行，所以要考虑 idempotency
 
-假设第一次 attempt 实际已经完成 side effect，只是 response 在网络途中丢失。
+假设第一次 attempt 实际已经完成 side effect，只是 response 在 network 途中丢失。
 
 调用者看到 timeout 后 retry：
 
@@ -176,9 +174,9 @@ attempt 2
 
 > 只有 `job_id` 字段本身不会自动产生 idempotency；代码必须真的用它阻止重复 side effect。
 
-### 6. Writer 也有 resource capacity
+### 6. Writer 也有 resource 容量
 
-很多程序只限制外部 API，却忘了最终写入数据库或文件同样可能成为瓶颈。
+很多程序只限制外部 API，却忘了最终写入同样可能成为瓶颈。
 
 因此：
 
@@ -190,7 +188,7 @@ writer concurrency gate
 有限写入 resource
 ```
 
-如果 writer 太慢，仍然可能导致上游 backlog 增长。
+如果 writer 太慢，仍然可能导致 upstream backlog 增长。
 
 所以 resource 模型要覆盖整条 pipeline，而不是只盯住外部调用。
 
@@ -253,6 +251,8 @@ retrying
 event=job_retry job_id=123 attempt=2 reason=timeout
 ```
 
+这里的 `event`、`job_id`、`attempt`、`reason` 都只是日志字段名。
+
 这样日志里能直接回答：
 
 - 哪个 job？
@@ -264,7 +264,7 @@ event=job_retry job_id=123 attempt=2 reason=timeout
 如果出现 retry storm，可以观察：
 
 - retry metrics 快速上涨；
-- downstream failure 同时增加；
+- downstream 的失败同时增加；
 - Queue 中等待的 job 持续增加；
 - structured logging 中出现大量相似 retry 事件。
 
@@ -318,7 +318,7 @@ resources 关闭
 
 ```text
 attempt
-  ├─ success           → 继续
+  ├─ 成功              → 继续
   ├─ transient failure → 还有次数时可以 retry
   ├─ permanent failure → 当前 job 失败
   └─ cancellation      → 继续向上层传播停止信号
@@ -330,7 +330,7 @@ attempt
   **更准确：** QPS 表达启动速率；concurrency 表达同时进行的数量。
 
 - **误区：** 失败就无限 retry 能提高成功率。  
-  **更准确：** 这可能形成 retry storm，并放大 downstream failure。
+  **更准确：** 这可能形成 retry storm，并放大 downstream 的压力。
 
 - **误区：** 每个 retry 共享一个无限等待的 attempt 也没关系。  
   **更准确：** 每次 attempt 自己仍应有 timeout。
@@ -352,12 +352,12 @@ attempt
 
 ## 本节规则总结
 
-1. 把整条 pipeline 的 resource capacity 都画出来。
+1. 把整条 pipeline 的 resource 容量都画出来。
 2. Concurrency limit 与 rate limit 是两个独立限制。
 3. 每个外部调用 attempt 都有自己的 timeout。
-4. Retry 只对明确适合的 failure 生效，而且次数有限。
+4. Retry 只对明确适合的失败类型生效，而且次数有限。
 5. Retry 可能重复执行，所以要用 idempotency 防止重复 side effect。
-6. Writer 也有自己的 concurrency capacity。
+6. Writer 也有自己的 concurrency limit。
 7. Graceful shutdown 顺序必须与业务承诺一致；需要时先 drain。
 8. Metrics 与 structured logging 一起提供基础 observability。
 9. Retry storm 与 task leak 都应该有可观察信号。
@@ -383,9 +383,9 @@ attempt
 
 ## 场景命题
 
-先填写 `practice/DESIGN.md`，再实现 Job Processing Service。
+先填写 `practice/DESIGN.md`，再实现 `Job Processing Service`。
 
-这里的 `Job Processing Service` 是练习项目名；它表示“持续接收 job、处理并保存结果的程序”。
+这个练习名表示“持续接收 job、处理并保存结果的 service”。
 
 程序必须明确：
 
