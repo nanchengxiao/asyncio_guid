@@ -1,8 +1,12 @@
+import io
+import re
+import tokenize
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 LESSONS = sorted((ROOT / "lessons").glob("[0-9][0-9]_*"))
 LEGACY = ROOT / "legacy" / "cloudfit_translation"
+CJK = re.compile(r"[\u4e00-\u9fff]")
 
 
 def test_has_twelve_lessons_covering_00_to_11():
@@ -22,12 +26,51 @@ def test_every_lesson_has_closed_learning_loop():
 
 
 def test_every_theory_readme_uses_course_template():
-    headings = ["## 本节目标", "## 为什么需要学习它", "## 核心理论", "## 脑内执行模型",
-                "## 常见误解", "## 本节规则总结", "## 关键问题", "## 场景命题", "## 验收"]
+    headings = [
+        "## 本节目标",
+        "## 为什么需要学习它",
+        "## 核心理论",
+        "## 脑内执行模型",
+        "## 常见误解",
+        "## 本节规则总结",
+        "## 关键问题",
+        "## 场景命题",
+        "## 验收",
+    ]
     for lesson in LESSONS:
         text = (lesson / "README.md").read_text(encoding="utf-8")
         for heading in headings:
             assert heading in text, (lesson.name, heading)
+
+
+def test_lessons_after_foundation_declare_prerequisites():
+    for lesson in LESSONS[1:]:
+        text = (lesson / "README.md").read_text(encoding="utf-8")
+        assert "## 进入本课前" in text, lesson.name
+
+    foundation = (LESSONS[0] / "README.md").read_text(encoding="utf-8")
+    assert "不要求你预先理解" in foundation
+    assert "本课会从普通 `for` 循环开始" in foundation
+
+
+def test_course_code_comments_use_chinese():
+    """课程中的教学注释使用中文；静态检查工具指令不受此限制。"""
+    tool_directives = ("# noqa", "# type:", "# fmt:", "# pragma:")
+
+    for path in (ROOT / "lessons").rglob("*.py"):
+        text = path.read_text(encoding="utf-8")
+        tokens = tokenize.generate_tokens(io.StringIO(text).readline)
+        for token in tokens:
+            if token.type != tokenize.COMMENT:
+                continue
+            comment = token.string.strip()
+            if comment.startswith(tool_directives):
+                continue
+            assert CJK.search(comment), (
+                path.relative_to(ROOT),
+                token.start[0],
+                comment,
+            )
 
 
 def test_design_before_code_exists_for_integrated_stages():
