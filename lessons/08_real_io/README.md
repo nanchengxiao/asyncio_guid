@@ -6,10 +6,10 @@
 
 ## 本课新增术语
 
-- **client（客户端）**：主动向另一端发起 request 的一方。
-- **server（服务器）**：接收 request、执行处理并返回 response 的一方。
+- **client（客户端）**：主动向另一端发送消息、并等待对方返回结果的一方。
+- **server（服务器）**：接收另一端发来的消息、执行处理并返回结果的一方。
 - **request（请求）**：client 发给 server 的一次“请处理这件事”的消息。
-- **response（响应）**：server 对一次 request 返回的结果。
+- **response（响应）**：server 针对一次 request 返回的结果。
 - **HTTP**：client 和 server 之间常用的一套 request / response 规则。
 - **URL**：告诉 client“要访问哪个网络位置”的地址字符串。
 - **JSON**：一种常见文本数据格式，用对象、数组、字符串、数字等结构表示数据。
@@ -164,12 +164,10 @@ async with session.get(url) as response:
 ```text
 many Task
    ↓
-finite connection pool
+数量有限的 connection pool
    ↓
 downstream
 ```
-
-这里的 `finite` 只表示“数量有限”。
 
 以后遇到其他有连接数量上限的外部系统，也可以先问：
 
@@ -216,7 +214,7 @@ server active         → downstream 实际观察到多少正在处理的 reques
 1. Client 发 request，server 回 response；HTTP 是双方使用的一套常见规则。
 2. URL 表示访问地址；JSON 是常见数据格式；GET 是常见的 HTTP request 类型。
 3. `ClientSession` 是需要明确关闭的 resource。
-4. 一批相关 request 通常复用同一个 Session。
+4. 一批相关 request 通常复用一个 Session。
 5. Connector 管理底层连接，connection pool 表达有限连接容量。
 6. Async context manager 允许进入和退出 resource 时发生异步等待。
 7. Task 数量不等于真实连接数量。
