@@ -6,7 +6,9 @@
 
 ## 本课新增术语
 
+- **lifecycle（生命周期）**：一份工作从创建、运行到最终结束的完整时间范围。
 - **owner（负责人）**：负责创建、等待，并处理某个 Task 最终结果的那一层代码。
+- **ownership（负责关系）**：明确“哪个 owner 对哪个 Task 的 lifecycle 负责”的关系。
 - **child Task（子任务）**：由当前这层代码创建并负责的 Task。
 - **sibling Task（兄弟任务）**：同一个 owner 管理、彼此处在同一层级的 child Task。
 - **`TaskGroup`**：Python 3.11 提供的一种管理一组 child Task 的工具；离开它的代码块前，这组 Task 必须已经结束。
@@ -20,7 +22,8 @@
 学完本节，你应该能够：
 
 - 为每个 Task 指定 owner；
-- 解释 structured concurrency 的生命周期边界；
+- 解释 ownership 与 lifecycle 边界；
+- 解释 structured concurrency 的作用；
 - 使用 `TaskGroup` 管理一组 sibling Task；
 - 解释一个 child Task 失败后整组 Task 怎样 converge；
 - 识别 orphan Task 风险。
@@ -34,7 +37,7 @@
 - 它失败后谁看见异常？
 - 其他同组工作还要不要继续？
 
-Structured concurrency 的价值，就是把这些责任写进代码结构本身。
+Structured concurrency 的价值，就是把 ownership 写进代码结构本身。
 
 ## 核心理论
 
@@ -60,7 +63,7 @@ child Task 并发推进
 所有 child Task 都已经结束
 ```
 
-父代码不会在自己创建的 child Task 还悬着时直接越过这个边界。
+父代码不会在自己创建的 child Task 还悬着时直接越过这个 lifecycle 边界。
 
 ### 2. Owner 不只是“谁调用了 create_task”
 
@@ -97,7 +100,7 @@ async def handle_request():
 - 程序退出时谁负责它？
 - 它失败后异常去哪？
 
-有些真正长期存在的后台工作可以有更长的 owner，但这个 owner 必须明确，而不是默认“丢到后台就行”。
+有些真正长期存在的后台工作可以有更长 lifecycle 和更长生命周期的 owner，但这个 owner 必须明确，而不是默认“丢到后台就行”。
 
 ## 脑内执行模型
 
@@ -112,12 +115,12 @@ owner
 owner 等整组 converge 后才离开 TaskGroup
 ```
 
-这里的 `cleanup` 已经在 Lesson 00 定义过：child Task 自己使用的资源，仍然要由它自己的代码可靠收尾。
+这里的 `cleanup` 已经在 Lesson 00 定义过：child Task 自己使用的 resource，仍然要由它自己的代码可靠收尾。
 
 ## 常见误解
 
 - **误区：** `TaskGroup` 只是“更短的批量等待语法”。  
-  **更准确：** 它还明确了 child Task 的 owner 和共同生命周期边界。
+  **更准确：** 它还明确了 child Task 的 owner 和共同 lifecycle 边界。
 
 - **误区：** Task 最后某处能被 `await` 就说明 ownership 清楚。  
   **更准确：** owner 应该在代码结构上可以直接定位。
@@ -128,28 +131,31 @@ owner 等整组 converge 后才离开 TaskGroup
 - **误区：** `TaskGroup` 会把异常吃掉。  
   **更准确：** 它先等整组 converge，再把失败向外报告。
 
-- **误区：** 所有后台工作都应该放进短生命周期 `TaskGroup`。  
-  **更准确：** 真正长期工作的生命周期更长，但仍然必须有明确 owner。
+- **误区：** 所有后台工作都应该放进短 lifecycle `TaskGroup`。  
+  **更准确：** 真正长期工作的 lifecycle 更长，但仍然必须有明确 owner。
 
 ## 本节规则总结
 
-1. 每个 Task 都应该有清楚 owner。
-2. Child Task 的生命周期不应无缘无故超过 owner。
-3. `TaskGroup` 把一组 child Task 放进明确共同边界。
-4. 一个 sibling 失败后，整组 Task 要先 converge，再离开边界。
-5. 不要把“没人负责、但还在运行”的 orphan Task 当作正常设计。
-6. 每个 child Task 仍然负责自己的 resource cleanup。
+1. Lifecycle 描述一份工作从创建到结束的完整范围。
+2. 每个 Task 都应该有清楚 owner 和 ownership。
+3. Child Task 的 lifecycle 不应无缘无故超过 owner。
+4. `TaskGroup` 把一组 child Task 放进明确共同边界。
+5. 一个 sibling 失败后，整组 Task 要先 converge，再离开边界。
+6. 不要把“没人负责、但还在运行”的 orphan Task 当作正常设计。
+7. 每个 child Task 仍然负责自己的 resource cleanup。
 
 ## 关键问题
 
-1. owner 最少要回答哪几个生命周期问题？
-2. child Task 和 sibling Task 分别是什么意思？
-3. structured concurrency 解决的核心问题是什么？
-4. `TaskGroup` 为什么能让 owner 更清楚？
-5. 一个 sibling 失败后，其余 sibling 会怎样？
-6. converge 在本课里具体表示什么？
-7. orphan Task 有什么风险？
-8. 哪类长期工作可能不适合放进一次请求的短生命周期 `TaskGroup`？
+1. lifecycle 在本课里是什么意思？
+2. owner 与 ownership 有什么区别？
+3. owner 最少要回答哪几个 lifecycle 问题？
+4. child Task 和 sibling Task 分别是什么意思？
+5. structured concurrency 解决的核心问题是什么？
+6. `TaskGroup` 为什么能让 ownership 更清楚？
+7. 一个 sibling 失败后，其余 sibling 会怎样？
+8. converge 在本课里具体表示什么？
+9. orphan Task 有什么风险？
+10. 哪类长期工作可能不适合放进一次请求的短 lifecycle `TaskGroup`？
 
 ## 场景命题
 
