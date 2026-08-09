@@ -4,67 +4,116 @@
 
 学完本节，你应该能够：
 
-- 为每个 Task 指定 owner
-- 解释结构化并发的生命周期边界
-- 使用 TaskGroup 表达一组兄弟任务
-- 理解一个子任务失败时 sibling 的取消语义
+- 为每个 Task 指定 owner（负责人）
+- 解释 structured concurrency（结构化并发）的生命周期边界
+- 使用 `TaskGroup` 管理一组兄弟 Task
+- 理解一个子 Task 失败时，其余 Task 为什么会被请求取消
+
+## 进入本课前
+
+你已经从 Lesson 02 学过：Event Loop、Task、`create_task()`、并发和基本调度。
+
+这一课第一次正式引入 **Task ownership、structured concurrency、TaskGroup、sibling task**。
 
 ## 为什么需要学习它
 
-到处散落的 `create_task()` 最大问题通常不是语法，而是没人能回答：谁等待它？父任务退出后怎么办？异常去哪？Structured concurrency 把这些问题变成代码结构本身。
+会创建 Task 之后，新的问题是：
+
+> 这个 Task 到底归谁管？谁等它结束？它失败以后谁负责处理？父操作结束时它还能不能继续留在后台？
+
+如果这些问题没有答案，代码虽然能跑，却很容易留下失控的后台任务。
 
 ## 核心理论
+
+### 1. Task owner 是什么
+
+这里的 **owner（负责人/拥有者）** 不是 Python 语法，而是设计概念：
+
+> 哪一层业务代码负责创建这个 Task、等待它结束，并决定它失败或需要停止时怎么办。
+
+如果一个 Task 被创建以后，谁都不再关心它，就可能变成 **orphan task（失去明确管理者的任务）**。
+
+### 2. Structured concurrency 是什么
+
+**Structured concurrency（结构化并发）** 的核心思想是：
+
+> 并发创建出来的子任务，应当被限制在一个清楚的代码作用域内；离开这个作用域前，这些子任务必须已经收敛到结束状态。
+
+Python 3.11 的 `asyncio.TaskGroup` 就是用来表达这种结构的：
 
 ```python
 async with asyncio.TaskGroup() as tg:
     a = tg.create_task(step_a())
     b = tg.create_task(step_b())
-# 离开作用域时：所有 child 已结束，或失败已完成传播
+# 运行到这里时，这个 TaskGroup 管理的子 Task 已经结束
 ```
 
-TaskGroup 是一个 ownership boundary。父作用域创建 child，也负责等待 child；一个 child 以普通异常失败时，TaskGroup 会取消其余尚未完成的 child，然后把失败以 `ExceptionGroup` 形式传播。
+### 3. sibling task 是什么
+
+由同一个 `TaskGroup` 创建、处在同一层的子 Task，可以称为 **sibling tasks（兄弟任务）**。
+
+如果其中一个 sibling 因普通异常失败，`TaskGroup` 会请求其余尚未结束的 sibling 停止，然后等待整个组收敛。
+
+这里的“取消（cancel）”先理解成：**请求一个 Task 停止继续工作**。下一课会专门学习 cancellation 的具体机制。
+
+### 4. TaskGroup 为什么要这样做
+
+假设三个步骤共同组成一次业务操作，其中 A 已经失败，那么 B/C 继续跑可能已经没有意义。
+
+```text
+parent
+  ├─ child A ── X 失败
+  ├─ child B ───── 收到停止请求 → 清理 → 结束
+  └─ child C ───── 收到停止请求 → 清理 → 结束
+```
+
+父操作不会在 B/C 还悬着时直接离开。
+
+如果同时存在多个异常，Python 可以用 `ExceptionGroup` 表达“这里不止一个异常”。这一课只需要知道它是**能同时携带多个异常的异常对象**；Lesson 05 会正式学习如何处理它。
 
 ## 脑内执行模型
 
 ```text
-parent owns TaskGroup
-   ├─ child A ──────X failure
-   ├─ child B ───────── cancelled → finally
-   └─ child C ───── cancelled → finally
+父 Task 进入 TaskGroup
+   ├─ sibling A ──────X failure
+   ├─ sibling B ───────── stop request → cleanup
+   └─ sibling C ───── stop request → cleanup
 
-parent 离开 TaskGroup 前，不会把这些 child 留在身后。
+父 Task 等整个组结束后，才离开 TaskGroup
 ```
 
 ## 常见误解
 
-- **误区：** TaskGroup 只是 gather 的新名字。它编码了更强的 sibling failure 与生命周期语义。
-- **误区：** 创建 Task 后只要最终某处 await 就算 ownership 清晰。owner 应在结构上可定位。
-- **误区：** 取消 sibling 是错误。对于同一操作的一组兄弟任务，这通常正是 fail-fast 所需语义。
-- **误区：** TaskGroup 会吞掉异常。它会组合并向外传播。
+- **误区：TaskGroup 只是 `gather()` 的新名字。** 它更强调“这些 Task 属于同一个作用域”和 sibling 失败时的统一收敛。
+- **误区：创建 Task 后，只要以后某处可能 await 它就算管理清楚。** owner 应该从代码结构上就能定位。
+- **误区：一个 sibling 失败后，其余 sibling 一定应该继续。** 如果它们共同组成一次业务操作，fail-fast（发现关键失败就尽快结束整组）通常更合理。
+- **误区：TaskGroup 会把异常吃掉。** 它会等待子任务收敛，然后把失败向外传播。
 
 ## 本节规则总结
 
-1. Task 必须属于一个可解释的生命周期边界。
-2. TaskGroup 离开前会等待所有 child 收敛。
-3. child 普通失败会触发 sibling cancellation。
-4. cleanup 仍由每个 child 自己用 finally 保证。
-5. 不要把长期后台服务误塞进短生命周期 TaskGroup。
+1. 每个 Task 都应有清楚的 owner。
+2. Structured concurrency 把子 Task 限制在清楚的生命周期作用域中。
+3. `TaskGroup` 会在离开作用域前等待其管理的子 Task 收敛。
+4. 一个 sibling 失败时，其余 sibling 通常会收到停止请求。
+5. 每个子任务自己的资源清理仍然要由自己保证。
 
 ## 关键问题
 
-1. 为什么“谁拥有这个 Task”是设计问题而不是代码风格？
-2. TaskGroup 中一个 child 失败，其余 child 会怎样？
-3. 父 task 自己被取消时，child 应怎样收敛？
-4. 什么时候裸 create_task 仍然合理？它的 owner 应在哪里？
-5. 为什么结构化并发减少 orphan task？
+1. “谁拥有这个 Task”为什么是设计问题？
+2. orphan task 有什么风险？
+3. `TaskGroup` 离开作用域前保证了什么？
+4. 一个 sibling 失败后，其余 sibling 为什么常常应该停止？
+5. 什么情况下一个长期后台 Task 不适合放进短生命周期的 `TaskGroup`？
 
 ## 场景命题
 
-启动三个兄弟 worker，其中一个会失败。父操作必须等待整个组收敛，其他 worker 收到取消并执行 cleanup，最终向调用者传播失败。
+启动三个兄弟 worker（这里的 worker 就是执行具体工作的子 Task）。其中一个会失败。
+
+父操作必须等待整个组收敛；其他 worker 收到停止请求并执行自己的 cleanup，最终失败继续传给调用者。
 
 ## 验收
 
-测试观测 sibling cancellation、cleanup 与异常传播；同时检查函数返回后没有遗留当前场景创建的 Task。
+测试会观察 sibling 是否停止、cleanup 是否发生、异常是否继续传播，并确认函数返回后没有遗留本场景创建的 Task。
 
 仓库参考实现：
 
