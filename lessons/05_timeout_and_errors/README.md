@@ -156,7 +156,7 @@ optional 依赖失败 → 可以选择 degradation
   **更准确：** retry 需要单独判断失败类型和重复执行是否安全。
 
 - **误区：** `ExceptionGroup` 只需要打印。  
-  **更准确：** 它让多个 concurrency failure 可以被同时保留和分类。
+  **更准确：** 它让多个同时发生的失败可以被一起保留和分类。
 
 - **误区：** optional dependency 失败必须让整个 operation 失败。  
   **更准确：** required / optional 是业务规则。
@@ -170,7 +170,7 @@ optional 依赖失败 → 可以选择 degradation
 2. Timeout、普通异常和 cancellation 要区分。
 3. Required / optional dependency 由业务决定。
 4. Degradation 只用于业务允许缺少的 optional 结果。
-5. `ExceptionGroup` 可以保留多个 concurrency failure。
+5. `ExceptionGroup` 可以保留多个同时发生的失败。
 6. `except*` 用于按异常类型处理 `ExceptionGroup`。
 7. Timeout 不自动等于 retry。
 
