@@ -14,6 +14,21 @@
 
 课程统一使用 **Python >= 3.11**，并优先教授 `TaskGroup`、`asyncio.timeout()` 等现代 asyncio 设计。
 
+## 仓库结构
+
+```text
+asyncio_guid/
+├── README.md                 # 课程入口
+├── COURSE_MAP.md             # Stage → Lesson → 验收地图
+├── lessons/                  # 12 节现代 asyncio 主课程
+├── tests/                    # 仓库结构健康检查
+├── references/               # 旧资料到新课程的映射索引
+└── legacy/
+    └── cloudfit_translation/ # 原仓库历史资料，自包含归档
+```
+
+学习时只需要沿 `README.md` → `COURSE_MAP.md` → `lessons/` 前进。旧版翻译和示例统一收在 `legacy/cloudfit_translation/`，不会与现代课程主线混在一起。
+
 ## 学习方式
 
 每节课形成同一个闭环：
@@ -93,16 +108,19 @@ uv run pytest lessons/<lesson>/tests -v --learner
 
 测试尽量验证行为，而不是搜索 `asyncio.gather`、`Semaphore` 等源码字符串。
 
-## 原有中文资料如何处理
+## 历史资料
 
-仓库最初包含 BBC R&D Cloudfit asyncio 系列的五篇中文翻译整理、合并版、HTML、图片和示例。这些资料没有被删除或冒充为本课程原创内容。
+仓库最初是 BBC R&D Cloudfit asyncio 系列五篇中文翻译及配套示例。为了让新课程目录保持清晰，原仓库资料现在统一归档到 [`legacy/cloudfit_translation/`](legacy/cloudfit_translation/)。
 
-- 原始翻译文件继续保留在仓库根目录，作为历史资料。
-- `NOTICE.md`、`SOURCES.md`、`MANIFEST.json` 保持来源链与原始清单信息。
-- 新课程吸收其中仍然优秀的 coroutine / Task / async context manager / blocking bridge 心智模型，但以 Python 3.11+ 的现代工程实践重新组织。
-- 历史兼容性、Future 底层细节、旧事件循环手工管理等内容不再占据课程主线。
+归档中保留：
 
-详见 [`references/README.md`](references/README.md) 与 [`legacy/README.md`](legacy/README.md)。
+- 原版 `README.md`；
+- 五篇中文翻译与合并版 Markdown / HTML；
+- 原图片、旧 examples、样式文件；
+- 原 `NOTICE.md`、`SOURCES.md`、`MANIFEST.json`；
+- 原项目的 `pyproject.toml` 与 `uv.lock`，用于还原当时的运行环境。
+
+归档文件本身尽量保持原样，只改变仓库路径。新课程对这些资料的吸收与取舍见 [`references/README.md`](references/README.md)。来源与许可信息见 [`legacy/cloudfit_translation/NOTICE.md`](legacy/cloudfit_translation/NOTICE.md) 和 [`legacy/cloudfit_translation/SOURCES.md`](legacy/cloudfit_translation/SOURCES.md)。
 
 ## 最终能力
 
