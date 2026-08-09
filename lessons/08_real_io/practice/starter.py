@@ -1,4 +1,4 @@
 async def fetch_json_batch(urls, *, connector_limit):
-    # TODO: use one aiohttp ClientSession and a TCPConnector whose limit is
-    # connector_limit. Return JSON responses in input order.
+    # TODO：复用一个 aiohttp ClientSession，并创建 limit=connector_limit 的
+    # TCPConnector；返回的 JSON 结果顺序必须与输入 URL 顺序一致。
     raise NotImplementedError
