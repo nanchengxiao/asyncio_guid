@@ -7,6 +7,7 @@ ROOT = Path(__file__).resolve().parents[1]
 LESSONS = sorted((ROOT / "lessons").glob("[0-9][0-9]_*"))
 LEGACY = ROOT / "legacy" / "cloudfit_translation"
 CJK = re.compile(r"[\u4e00-\u9fff]")
+TERM_DEFINITION = re.compile(r"^- \*\*(.+?)\*\*：(.+)$", flags=re.MULTILINE)
 
 LESSON_HEADINGS = [
     "## 进入本课前",
@@ -31,30 +32,46 @@ ROOT_README_HEADINGS = [
 ]
 
 NAVIGATION_ONLY_TERMS = [
+    "异步",
+    "并发",
     "coroutine",
     "Awaitable",
     "`await`",
     "Event Loop",
+    "Task",
     "TaskGroup",
     "structured concurrency",
     "cancellation",
     "CancelledError",
+    "timeout",
     "ExceptionGroup",
     "Semaphore",
+    "Queue",
+    "producer",
+    "consumer",
+    "upstream",
+    "downstream",
     "backpressure",
+    "network",
+    "HTTP",
+    "JSON",
     "aiohttp",
     "ClientSession",
     "connection pool",
+    "thread",
+    "thread pool",
+    "thread-safe",
     "to_thread",
+    "API",
+    "SDK",
     "DAG",
+    "retry",
     "idempotency",
     "rate limit",
-    "retry storm",
-    "metrics",
     "QPS",
-    "SDK",
-    "HTTP",
-    "JSON",
+    "metrics",
+    "observability",
+    "retry storm",
 ]
 
 
@@ -63,6 +80,11 @@ def _visible_markdown_text(text: str) -> str:
     text = re.sub(r"```.*?```", "", text, flags=re.DOTALL)
     text = re.sub(r"\]\([^)]*\)", "]", text)
     return text
+
+
+def _canonical_term(label: str) -> str:
+    """从“term（中文名）”或反引号 API 标签里取出首次出现检查用名称。"""
+    return label.split("（", 1)[0].strip().strip("`")
 
 
 def test_has_twelve_lessons_covering_00_to_11():
@@ -91,6 +113,30 @@ def test_every_theory_readme_defines_terms_before_objectives():
         assert positions == sorted(positions), lesson.name
 
 
+def test_new_terms_do_not_appear_before_their_definition():
+    """标题、前置说明、以及更早的定义都不能提前使用本课尚未定义的新术语。"""
+    for lesson in LESSONS:
+        text = (lesson / "README.md").read_text(encoding="utf-8")
+        terms_start = text.index("## 本课新增术语")
+        objectives_start = text.index("## 本节目标")
+        term_block = text[terms_start:objectives_start]
+        definitions = list(TERM_DEFINITION.finditer(term_block))
+        assert definitions, lesson.name
+
+        for match in definitions:
+            label, definition = match.groups()
+            canonical = _canonical_term(label)
+            assert definition.strip(), (lesson.name, label)
+
+            # 只检查足够明确的名称；单个符号或过短片段容易误中普通文本。
+            if len(canonical) < 3:
+                continue
+
+            absolute_definition_start = terms_start + match.start()
+            before_definition = text[:absolute_definition_start]
+            assert canonical not in before_definition, (lesson.name, canonical)
+
+
 def test_prerequisites_only_point_backward_in_course():
     """结构层面保证每课先声明前置，再声明本课新术语。"""
     for lesson in LESSONS:
@@ -106,7 +152,7 @@ def test_root_readme_is_only_project_entrypoint():
     headings = re.findall(r"^## .+$", text, flags=re.MULTILINE)
     assert headings == ROOT_README_HEADINGS
 
-    forbidden_sections = [
+    forbidden_content = [
         "教学约定",
         "教学规范",
         "每节课怎么学",
@@ -115,8 +161,10 @@ def test_root_readme_is_only_project_entrypoint():
         "最终能力",
         "本轮",
         "重构过程",
+        "第一次进入主线",
+        "本课新增术语",
     ]
-    assert all(section not in text for section in forbidden_sections)
+    assert all(item not in text for item in forbidden_content)
 
 
 def test_navigation_docs_do_not_preteach_course_terms():
