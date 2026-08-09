@@ -1,4 +1,4 @@
-# Lesson 03 — 给一组异步工作明确负责人
+# Lesson 03 — 让一组工作在同一个边界内开始和结束
 
 ## 进入本课前
 
@@ -56,7 +56,7 @@ async with asyncio.TaskGroup() as tg:
    ↓
 owner 创建 child Task
    ↓
-child Task 并发推进
+child Task concurrency 推进
    ↓
 离开 TaskGroup 前
    ↓
@@ -94,13 +94,13 @@ async def handle_request():
     return {"ok": True}
 ```
 
-如果请求函数已经返回，但刚创建的 Task 仍在运行，就要问：
+如果当前函数已经返回，但刚创建的 Task 仍在运行，就要问：
 
 - 谁等待它？
 - 程序退出时谁负责它？
 - 它失败后异常去哪？
 
-有些真正长期存在的后台工作可以有更长 lifecycle 和更长生命周期的 owner，但这个 owner 必须明确，而不是默认“丢到后台就行”。
+有些真正长期存在的后台工作可以有更长 lifecycle 和更长 lifecycle 的 owner，但这个 owner 必须明确，而不是默认“丢到后台就行”。
 
 ## 脑内执行模型
 
@@ -108,9 +108,9 @@ async def handle_request():
 owner
   │
   └─ TaskGroup
-      ├─ child A ──────X failure
-      ├─ child B ────── stop request → cleanup → end
-      └─ child C ────── stop request → cleanup → end
+      ├─ child A ────── 失败
+      ├─ child B ────── 停止请求 → cleanup → 结束
+      └─ child C ────── 停止请求 → cleanup → 结束
 
 owner 等整组 converge 后才离开 TaskGroup
 ```
@@ -126,7 +126,7 @@ owner 等整组 converge 后才离开 TaskGroup
   **更准确：** owner 应该在代码结构上可以直接定位。
 
 - **误区：** sibling 被请求停止一定是额外错误。  
-  **更准确：** 如果它们共同组成一次业务操作，关键 child 失败后停止其余工作通常更符合业务边界。
+  **更准确：** 如果它们共同组成一次业务工作，关键 child 失败后停止其余工作通常更符合业务边界。
 
 - **误区：** `TaskGroup` 会把异常吃掉。  
   **更准确：** 它先等整组 converge，再把失败向外报告。
@@ -155,7 +155,7 @@ owner 等整组 converge 后才离开 TaskGroup
 7. 一个 sibling 失败后，其余 sibling 会怎样？
 8. converge 在本课里具体表示什么？
 9. orphan Task 有什么风险？
-10. 哪类长期工作可能不适合放进一次请求的短 lifecycle `TaskGroup`？
+10. 哪类长期工作可能不适合放进一次短 lifecycle `TaskGroup`？
 
 ## 场景命题
 
