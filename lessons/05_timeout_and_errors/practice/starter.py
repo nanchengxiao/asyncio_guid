@@ -1,9 +1,9 @@
 async def run_required(operation, timeout_seconds):
-    # TODO: enforce a time budget around the required operation.
+    # TODO：为这个 required operation 设置明确的超时时间预算。
     raise NotImplementedError
 
 
 async def collect_parallel_failures(*operations):
-    # TODO: run sibling operations as one structured group and return the
-    # ExceptionGroup to the caller when multiple failures happen.
+    # TODO：把这些 sibling operation 作为一个 structured group 并发运行；
+    # 当多个任务失败时，让 ExceptionGroup 继续交给调用方处理。
     raise NotImplementedError
