@@ -1,23 +1,23 @@
-# Lesson 09 — 让普通同步函数不要拖住异步程序
+# Lesson 09 — 让会长时间等待的普通函数不要拖住其他工作
 
 ## 进入本课前
 
-你已经学过 Event Loop、Task、thread、真实异步 I/O 和 bounded concurrency。
+你已经学过 Event Loop、Task、thread、真实 async I/O 和 bounded concurrency。
 
 ## 本课新增术语
 
-- **synchronous call（同步调用）**：像普通 Python 函数调用一样，当前执行路径会一直跑到这个调用返回，期间不会自动让别的异步工作得到执行机会。
-- **blocking I/O（阻塞式 I/O）**：同步调用在等待网络、磁盘、数据库等外部 I/O 时，当前 thread 仍被这个调用占住。
+- **synchronous call（同步调用）**：像普通 Python 函数调用一样，当前执行路径会一直跑到这个调用返回，期间不会自动让别的 async 工作得到执行机会。
+- **blocking I/O（阻塞式 I/O）**：synchronous call 在等待网络、磁盘、数据库等外部 I/O 时，当前 thread 仍被这个调用占住。
 - **I/O-bound（I/O 密集型）**：总时间主要花在等待外部 I/O，而不是持续做计算。
 - **CPU-bound（计算密集型）**：总时间主要花在 CPU 持续执行计算。
 - **worker thread（工作线程）**：专门替 Event Loop thread 执行普通同步函数的另一条 thread。
 - **thread pool（线程池）**：管理一组 worker thread 的容器；提交的同步工作会在线程可用时执行。
-- **`asyncio.to_thread()`**：把一个普通同步函数交给 worker thread 执行，并让当前 Task 以异步方式等待其结果的工具。
+- **`asyncio.to_thread()`**：把一个普通同步函数交给 worker thread 执行，并让当前 Task 以 async 方式等待其结果的工具。
 - **thread-safe（线程安全）**：同一个对象被多个 thread 同时使用时，内部状态仍能保持正确。
-- **API（接口）**：一个程序、库或服务对外提供的一组可调用能力。
-- **SDK（软件开发工具包）**：为了调用某个服务或平台而提供的一组库、对象和 API。
+- **API（接口）**：一个程序或库明确提供给其他代码调用的一组能力。
+- **SDK（软件开发工具包）**：为了调用某个外部系统而提供的一组库、对象和 API。
 - **legacy library（遗留/旧库）**：业务已经在使用、但设计时可能没有提供 asyncio API 的库。
-- **client object（客户端对象）**：代码里代表某个外部服务调用入口的对象，例如旧 SDK 创建出来的 client。
+- **client object（客户端对象）**：代码里代表某个外部系统调用入口的对象，例如旧 SDK 创建出来的 client。
 - **heartbeat（心跳任务）**：周期性执行很小工作，用来观察 Event Loop 是否还能持续调度其他 Task。
 
 ## 本节目标
@@ -57,7 +57,7 @@ async def load_profile():
 time.sleep(1)
 ```
 
-那么这 1 秒里，当前 Event Loop thread 被同步调用占住。
+那么这 1 秒里，当前 Event Loop thread 被 synchronous call 占住。
 
 其他 Task 即使已经可以继续，也没有机会运行。
 
@@ -79,7 +79,7 @@ result = await asyncio.to_thread(blocking_sdk_call, arg)
 这行代码做两件事：
 
 1. 把 `blocking_sdk_call(arg)` 交给 worker thread 执行；
-2. 当前 Task 异步等待它的结果，所以 Event Loop thread 可以继续调度其他 Task。
+2. 当前 Task async 等待它的结果，所以 Event Loop thread 可以继续调度其他 Task。
 
 ```text
 Event Loop thread: heartbeat ─ tick ─ tick ─ tick
@@ -118,7 +118,7 @@ result = await asyncio.to_thread(load_sync, item)
 
 这和前面学过的 bounded concurrency 思路一致：
 
-> 任何有限执行资源，都应该考虑容量与等待位置。
+> 任何有限执行 resource，都应该考虑容量与等待位置。
 
 ### 5. 共享 client object 时要确认 thread-safe
 
@@ -186,7 +186,7 @@ async def heartbeat(events):
 
 ## 脑内执行模型
 
-直接调用同步阻塞函数：
+直接调用普通阻塞函数：
 
 ```text
 Event Loop thread
@@ -214,7 +214,7 @@ Event Loop thread ─ await result ──→ 继续调度其他 Task
   **更准确：** 关键看它最坏情况下是否长时间等待外部 I/O。
 
 - **误区：** `to_thread()` 会把 coroutine 搬到 thread。  
-  **更准确：** 它主要执行普通同步函数；当前 coroutine 只负责异步等待结果。
+  **更准确：** 它主要执行普通同步函数；当前 coroutine 只负责 async 等待结果。
 
 - **误区：** worker thread 数量无限。  
   **更准确：** thread pool 自己也有容量和排队。
