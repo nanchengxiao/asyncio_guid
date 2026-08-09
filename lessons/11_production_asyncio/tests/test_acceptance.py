@@ -69,7 +69,8 @@ async def test_pipeline_limits_retries_idempotency_and_drain():
     assert metrics.duplicates == 1
     assert any(event == "job_retry" for event, _ in events)
     assert any(event == "job_duplicate" for event, _ in events)
-    # Four API attempts are made (b retries); starts are rate-spaced globally.
+    # 一共会发起 4 次 API 调用（job b 会重试一次）；所有调用的启动时间
+    # 都必须遵守全局 rate limit，而不是只限制某一个 worker。
     assert len(starts) == 4
     gaps = [b - a for a, b in zip(starts, starts[1:])]
     assert min(gaps) >= 0.012
