@@ -181,7 +181,7 @@ consumer:       get ─ work ─ done ─ get ─ work
 ```text
 consumer 慢
    ↓
-Queue occupancy 上升
+Queue 中等待的 item 数量上升
    ↓
 达到 maxsize
    ↓
