@@ -8,19 +8,22 @@
 
 ## 本课新增术语
 
+- **shutdown（关闭流程）**：服务从“还在正常接收和处理工作”走到“停止运行”的整个过程。
+- **graceful shutdown（优雅关闭）**：shutdown 时先按业务承诺处理在途工作和 resource，再真正退出，而不是直接粗暴丢弃所有工作。
 - **attempt（一次尝试）**：针对同一业务 operation 发起的一次具体调用；retry 会产生新的 attempt。
 - **transient failure（暂时性失败）**：过一会儿再试有可能恢复的失败，例如短暂网络故障。
 - **side effect（副作用）**：会改变外部状态的动作，例如写数据库、扣款、发送消息。
 - **idempotency（幂等性）**：同一个业务请求被重复执行时，不会重复产生本不该重复的 side effect。
-- **graceful shutdown（优雅关闭）**：服务停止时先按业务承诺处理在途工作和资源，再真正退出，而不是直接粗暴丢弃所有工作。
-- **QPS（Queries Per Second，每秒请求数）**：每秒启动多少次请求的一种速率表达方式。
+- **QPS（Queries Per Second，每秒请求数）**：每秒启动多少次 request 的一种速率表达方式。
 - **rate limiter（速率限制器）**：真正执行 rate limit 规则、决定某个新 request 现在能不能启动的控制组件。
+- **gate（闸门）**：本课对“进入受限 resource 前必须先获得许可”的控制点的白话称呼。
 - **writer（写入器）**：负责把处理结果写入数据库、文件或其他存储位置的处理环节。
+- **counter（计数器）**：只记录某类事件累计发生了多少次的数字。
 - **metrics（指标）**：用数字持续记录系统状态，例如收到多少 job、成功多少、失败多少、retry 多少。
 - **structured logging（结构化日志）**：用“事件名 + 明确字段”记录日志，让程序可以按字段查询和分析。
 - **observability（可观测性）**：通过 metrics、日志等外部信号判断系统内部正在发生什么。
-- **task leak（任务泄漏）**：本应结束的 Task 因生命周期管理错误长期残留并继续占用资源。
-- **retry storm（重试风暴）**：大量失败请求在相近时间集中 retry，反而把已经有压力的 downstream 打得更重。
+- **task leak（任务泄漏）**：本应结束的 Task 因 lifecycle 管理错误长期残留并继续占用 resource。
+- **retry storm（重试风暴）**：大量失败 request 在相近时间集中 retry，反而把已经有压力的 downstream 打得更重。
 
 ## 本节目标
 
@@ -36,7 +39,7 @@
 
 ## 为什么需要学习它
 
-生产问题通常不是某一个 asyncio API 单独出错，而是多个机制互相影响：
+生产问题通常不是某一个工具单独出错，而是多个机制互相影响：
 
 ```text
 slow downstream
@@ -50,13 +53,13 @@ retry 增多
 downstream 压力更大
 ```
 
-同时，服务还必须面对停止信号、重复 job、写入资源上限、长期运行中的 Task 生命周期，以及“出了问题之后怎么知道”。
+同时，服务还必须面对 shutdown、重复 job、writer resource 上限、长期运行中的 Task lifecycle，以及“出了问题之后怎么知道”。
 
 最后一课的目标，就是把前面已经学过的独立机制组合成一个可解释的服务模型。
 
 ## 核心理论
 
-### 1. 先画完整服务流水线
+### 1. 先画完整服务 pipeline
 
 ```text
 输入
@@ -74,16 +77,16 @@ writer concurrency gate
 结果存储
 ```
 
-这里的 **gate（闸门）** 只是白话比喻：只有拿到许可的工作才能进入下一段受限资源区。
-
 External API 中的 API 已在 Lesson 09 定义；这里表示“当前服务要调用的外部接口”。
+
+这里的 gate 表示：只有满足对应 resource 限制的工作，才能进入下一段。
 
 ### 2. Concurrency limit 与 rate limit 同时存在
 
 前面已经分别学过：
 
-- concurrency limit：控制同一时刻正在进行多少调用；
-- rate limit：控制单位时间允许启动多少新调用。
+- concurrency limit 控制同一时刻正在进行多少调用；
+- rate limit 控制单位时间允许启动多少新调用。
 
 生产服务里常常两个都需要。
 
@@ -125,7 +128,7 @@ attempt 3 → success
 总等待时间才有可解释上界
 ```
 
-### 4. 只对明确失败类型 retry
+### 4. 只对明确 failure 类型 retry
 
 Retry 不能写成：
 
@@ -137,8 +140,8 @@ except Exception:
 更合理的思路是先分类：
 
 ```text
-transient failure → 可能适合 retry
-明确业务错误    → 通常不 retry
+transient failure   → 可能适合 retry
+明确业务错误        → 通常不 retry
 caller cancellation → 不应当 retry
 ```
 
@@ -163,7 +166,7 @@ attempt 2
 
 如果没有 idempotency，就可能产生重复数据、重复扣款或重复消息。
 
-常见做法是给业务请求一个稳定标识，例如 `job_id`，并在真正产生 side effect 前检查是否已经处理过。
+常见做法是给业务 request 一个稳定标识，例如 `job_id`，并在真正产生 side effect 前检查是否已经处理过。
 
 但要注意：
 
@@ -178,18 +181,18 @@ attempt 2
 ```text
 很多处理结果
     ↓
-writer concurrency limit
+writer concurrency gate
     ↓
-有限写入资源
+有限写入 resource
 ```
 
 如果 writer 太慢，仍然可能导致上游 backlog 增长。
 
-所以资源模型要覆盖整条 pipeline，而不是只盯住网络调用。
+所以 resource 模型要覆盖整条 pipeline，而不是只盯住网络调用。
 
 ### 7. Graceful shutdown 先写业务承诺
 
-本课采用的停止策略是：
+本课采用的 shutdown 策略是：
 
 ```text
 停止接收新输入
@@ -205,13 +208,13 @@ worker 处理完已接收 job
 服务结束
 ```
 
-这就是 graceful shutdown：不是“永远不 cancel”，而是先明确哪些工作承诺处理完、哪些工作允许停止，再按顺序收尾。
+这就是 graceful shutdown：不是“永远不 cancellation”，而是先明确哪些工作承诺处理完、哪些工作允许停止，再按顺序收尾。
 
-有些服务可能选择立即停止剩余工作；那也是一种策略，但必须由业务承诺决定，而不是随手实现。
+有些服务可能选择立即停止剩余工作；那也是一种 shutdown 策略，但必须由业务承诺决定，而不是随手实现。
 
 ### 8. Metrics 让系统状态可以量化
 
-最基础的 counters（计数器）可以包括：
+最基础的 counter 可以包括：
 
 ```text
 received
@@ -220,8 +223,6 @@ failed
 retried
 duplicates
 ```
-
-这里的 **counter（计数器）** 就是“只记录某类事件发生了多少次”的数字。
 
 例如：
 
@@ -258,7 +259,7 @@ event=job_retry job_id=123 attempt=2 reason=timeout
 
 - retry metrics 快速上涨；
 - downstream failure 同时增加；
-- Queue 长度持续升高；
+- Queue 中等待的 job 持续增加；
 - structured logging 中出现大量相似 retry event。
 
 如果出现 task leak，可以观察：
@@ -269,7 +270,7 @@ event=job_retry job_id=123 attempt=2 reason=timeout
 
 Observability 的目标不是“日志越多越好”，而是：
 
-> 关键业务状态和资源压力，能否从外部信号中被看见。
+> 关键业务状态和 resource 压力，能否从外部信号中被看见。
 
 ## 脑内执行模型
 
@@ -290,7 +291,7 @@ writer gate
 result stored
 ```
 
-停止过程：
+shutdown：
 
 ```text
 STOPPING
@@ -317,25 +318,27 @@ attempt
   └─ cancellation → propagate stop
 ```
 
+这里的 **permanent failure（持久性失败）** 第一次出现时只需要这样理解：再次立即尝试通常不会改变结果的失败，例如明确的参数错误。
+
 ## 常见误解
 
 - **误区：** QPS=10 就等于 concurrency=10。  
   **更准确：** QPS 表达启动速率；concurrency 表达同时在途数量。
 
 - **误区：** 失败就无限 retry 能提高成功率。  
-  **更准确：** 这可能形成 retry storm，并放大 downstream 故障。
+  **更准确：** 这可能形成 retry storm，并放大 downstream failure。
 
 - **误区：** 每个 retry 共享一个无限等待的 attempt 也没关系。  
   **更准确：** 每次 attempt 自己仍应有 timeout。
 
-- **误区：** 有 `job_id` 就天然 idempotent。  
+- **误区：** 有 `job_id` 就天然具备 idempotency。  
   **更准确：** 实现必须真的利用稳定标识避免重复 side effect。
 
-- **误区：** graceful shutdown 就是 cancel 所有 worker。  
+- **误区：** graceful shutdown 就是 cancellation 所有 worker。  
   **更准确：** 是否 drain 已接收工作取决于业务承诺。
 
 - **误区：** 只限制 External API concurrency 就够了。  
-  **更准确：** writer 和其他有限资源同样可能成为瓶颈。
+  **更准确：** writer 和其他有限 resource 同样可能成为瓶颈。
 
 - **误区：** metrics 只统计成功数即可。  
   **更准确：** 至少还要能看到失败、retry、duplicate 和 backlog 等关键状态。
@@ -357,19 +360,22 @@ attempt
 
 ## 关键问题
 
-1. attempt 与 retry 的关系是什么？
-2. transient failure 为什么可能适合 retry？
-3. side effect 在本课里指什么？
-4. idempotency 为什么不能只靠“调用者不要重复发送”？
-5. QPS 与 concurrency limit 分别控制什么？
-6. rate limiter 负责什么？
-7. 为什么每次 attempt 自己仍要有 timeout？
-8. writer 为什么也需要资源上限？
-9. graceful shutdown 与 drain 的关系是什么？
-10. metrics 与 structured logging 分别提供什么信息？
-11. observability 的目标是什么？
-12. 哪些信号会让你怀疑出现 retry storm？
-13. 哪些现象会让你怀疑存在 task leak？
+1. shutdown 与 graceful shutdown 有什么区别？
+2. attempt 与 retry 的关系是什么？
+3. transient failure 为什么可能适合 retry？
+4. side effect 在本课里指什么？
+5. idempotency 为什么不能只靠“调用者不要重复发送”？
+6. QPS 与 concurrency limit 分别控制什么？
+7. rate limiter 负责什么？
+8. gate 在本课里表示什么？
+9. 为什么每次 attempt 自己仍要有 timeout？
+10. writer 为什么也需要 resource 上限？
+11. counter 与 metrics 有什么关系？
+12. graceful shutdown 与 drain 的关系是什么？
+13. metrics 与 structured logging 分别提供什么信息？
+14. observability 的目标是什么？
+15. 哪些信号会让你怀疑出现 retry storm？
+16. 哪些现象会让你怀疑存在 task leak？
 
 ## 场景命题
 
