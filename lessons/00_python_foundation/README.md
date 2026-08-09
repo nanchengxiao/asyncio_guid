@@ -12,7 +12,9 @@
 
 - **iterable（可迭代对象）**：一份“可以开始逐项读取”的数据，例如 list、tuple、字符串。
 - **iterator（迭代器）**：一次具体的逐项读取过程；它自己记得“已经读到哪里”。
-- **`StopIteration`**：告诉调用方“已经没有下一项了”的结束信号。
+- **`iter(...)`**：根据一个 iterable 创建一次 iterator。
+- **`next(...)`**：向 iterator 请求下一项，并让它把当前位置向前推进一步。
+- **`StopIteration`**：iterator 已经没有下一项时，用来告诉调用方“遍历结束了”的信号。
 - **`yield`**：先把一个值交给调用方，同时把当前执行位置保留下来，下一次再从这里继续。
 - **generator（生成器）**：一种可以在 `yield` 处交出一个值并暂停、以后再从原位置继续的 iterator。
 - **generator function（生成器函数）**：函数体中使用了 `yield` 的函数；调用它时通常不会立刻跑完整个函数体。
@@ -23,6 +25,8 @@
 - **`finally`**：离开对应 `try` 范围前一定会执行的收尾代码块。
 - **`with`**：用一个缩进代码块明确表示“进入某个使用范围，结束时再退出这个范围”的 Python 语法。
 - **context manager（上下文管理器）**：让 `with` 能够执行“进入 → 使用 → 退出并 cleanup”这套流程的对象。
+- **`__enter__()`**：进入 `with` 时由 Python 调用的方法；它可以准备并交出要使用的对象。
+- **`__exit__()`**：离开 `with` 时由 Python 调用的方法；它可以执行 cleanup。
 - **callback（回调函数）**：把一个函数当作值传进去，等到需要时再调用它。
 - **stream（流）**：这里先理解成“可以一条一条取得的数据来源”，不表示某个特殊 Python 类型。
 - **`@contextmanager`**：把一个只 `yield` 一次的 generator function 包装成可用于 `with` 的 context manager 的标准库工具。
@@ -377,11 +381,7 @@ with DemoContext() as value:
     print(value)
 ```
 
-你不需要背 `__exit__` 的参数，只要先记住：
-
-```text
-enter → use → exit
-```
+现在可以把执行顺序直接对应到术语表：进入 `with` 时调用 `__enter__()`，离开时调用 `__exit__()`。
 
 ### 11. callback
 
@@ -540,19 +540,21 @@ with managed_records(source(), close_resource) as records:
 
 1. `[1, 2, 3]` 是 iterable 还是 iterator？
 2. `iter([1, 2, 3])` 得到什么？
-3. 谁保存“这次遍历已经走到哪里”的状态？
-4. `for x in values` 与 `iter()` / `next()` 有什么关系？
-5. generator function 与 generator object 有什么区别？
-6. 为什么调用 generator function 时函数体不会立刻跑完？
-7. 第一次执行到 `yield 1` 后，下一次从哪里恢复？
-8. `return` 与 `yield` 最重要的区别是什么？
-9. lazy 行为可以通过什么具体输出观察？
-10. 为什么 `list(records)` 会违反按需读取？
-11. `finally` 与 `except` 的职责有什么区别？
-12. `with X() as value` 中的 `value` 大致从哪里来？
-13. `@contextmanager` 中，`yield` 前、`yield` 的值、`yield` 后分别做什么？
-14. 为什么不能形成“`break` ⇒ generator 立即 cleanup”的规则？
-15. 本课 practice 中，是什么边界保证 `close_resource()` 被调用？
+3. `next(iterator)` 做什么？
+4. 谁保存“这次遍历已经走到哪里”的状态？
+5. `for x in values` 与 `iter()` / `next()` 有什么关系？
+6. generator function 与 generator object 有什么区别？
+7. 为什么调用 generator function 时函数体不会立刻跑完？
+8. 第一次执行到 `yield 1` 后，下一次从哪里恢复？
+9. `return` 与 `yield` 最重要的区别是什么？
+10. lazy 行为可以通过什么具体输出观察？
+11. 为什么 `list(records)` 会违反按需读取？
+12. `finally` 与 `except` 的职责有什么区别？
+13. `with X() as value` 中的 `value` 大致从哪里来？
+14. `__enter__()` 与 `__exit__()` 分别在什么时候调用？
+15. `@contextmanager` 中，`yield` 前、`yield` 的值、`yield` 后分别做什么？
+16. 为什么不能形成“`break` ⇒ generator 立即 cleanup”的规则？
+17. 本课 practice 中，是什么边界保证 `close_resource()` 被调用？
 
 ## 场景命题
 
