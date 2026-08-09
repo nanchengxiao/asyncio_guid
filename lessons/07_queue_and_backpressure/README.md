@@ -4,230 +4,106 @@
 
 学完本节，你应该能够：
 
-- 解释 Queue 为什么能把“生产工作”和“处理工作”连接起来
-- 理解 bounded Queue 如何限制 backlog
-- 解释 backpressure（反压）为什么必须向上游传播
-- 理解 producer / consumer、`task_done()` / `join()` 的基本职责
-- 设计一个能够干净结束的 worker 流水线
+- 使用 bounded Queue 连接 producer 与 consumer
+- 解释 backpressure 为什么要向上游传播
+- 区分并发上限与 backlog 上限
+- 让 worker 在工作结束后干净退出
 
 ## 进入本课前
 
-你已经学过：Task、bounded concurrency、Semaphore、active concurrency 和 backlog。
+你已经学过 active concurrency、backlog 和 Semaphore。
 
-这一课新增 **Queue、producer/consumer、bounded Queue、backpressure、AsyncIterable、sentinel、drain**。
+本课新增：
+
+- **producer（生产者）**：负责产生待处理工作。
+- **consumer（消费者）**：从 Queue 取工作并处理。
+- **bounded Queue**：有 `maxsize` 上限的队列，用来限制等待中的 backlog。
+- **backpressure（反压）**：下游处理不过来时，让上游也慢下来，而不是无限堆积。
+- **AsyncIterable**：可以用 `async for` 逐项异步读取的数据源；取下一项本身可能需要等待。
+- **sentinel（结束标记）**：放进 Queue 的特殊值，用来告诉 worker“没有新工作了”。
+- **drain（排空）**：停止接收新工作，但把已经接收的工作处理完。
 
 ## 为什么需要学习它
 
-上一课解决的是：
-
-> 同一时间最多允许多少个工作真正占用资源？
-
-但还有另一个问题：
-
-> 如果新工作产生得比处理速度快，那些“还没轮到处理”的工作放在哪里？最多允许堆多少？
-
-这就是 Queue 与 backpressure 要解决的问题。
+如果 producer 每秒产生 10 万条消息，而 consumer 每秒只能处理 1 万条，系统不可能靠“更多内存”永久解决。Queue 必须有边界，让上游在下游跟不上时感受到压力。
 
 ## 核心理论
 
-### 1. producer 和 consumer 是什么
-
-**producer（生产者）**：负责产生待处理工作。
-
-**consumer（消费者）**：负责从队列中取出工作并处理。
-
 ```text
 Producer
-   ↓
- Queue
-   ↓
-Consumers
+   │ await queue.put(item)
+   ▼
+bounded Queue (maxsize=N)
+   │
+   ├─ Consumer 1
+   ├─ Consumer 2
+   └─ Consumer 3
 ```
 
-例如：
+Queue 满时，`await queue.put(item)` 会等待。这不是故障，而是 backpressure 正在工作：consumer 处理不过来，producer 就不能继续无限领先。
+
+Semaphore 与 Queue 的边界不同：
 
 ```text
-读取文件中的 job → Queue → 3 个 worker 调 API
+Semaphore / worker 数量 → 限制 active concurrency
+Queue maxsize           → 限制等待中的 backlog
 ```
 
-### 2. Queue 是什么
+producer 不应该先把 AsyncIterable 全部读完再入队，否则压力已经提前变成内存占用，Queue 无法把 backpressure 传回真正的数据源。
 
-`asyncio.Queue` 是 Task 之间传递工作的容器。
-
-producer：
-
-```python
-await queue.put(item)
-```
-
-consumer：
-
-```python
-item = await queue.get()
-```
-
-如果暂时没有 item，consumer 可以等待；如果使用有容量上限的 Queue，队列满时 producer 也可以等待。
-
-### 3. bounded Queue 是什么
-
-```python
-queue = asyncio.Queue(maxsize=10)
-```
-
-这表示队列中最多积压 10 个尚未取走的 item。
-
-这和 Semaphore 的边界不同：
-
-```text
-Queue maxsize → 限制“等待处理的 backlog”
-worker / Semaphore → 限制“正在处理的 active 工作”
-```
-
-### 4. backpressure 是什么
-
-**backpressure（反压）**可以用一句白话理解：
-
-> 下游处理不过来时，不是无限堆积，而是让上游也慢下来。
-
-假设 consumer 很慢，Queue 已经满了：
-
-```python
-await queue.put(item)
-```
-
-producer 会停在这里等待空位。
-
-这不是 bug，而是在告诉上游：
-
-> “后面已经塞满了，先别继续生产这么快。”
-
-如果 producer 自己又是从网络、文件或其他数据源读取，那么它被 `queue.put()` 卡住以后，就会自然减少继续读取的速度。这样压力才能一路传回源头。
-
-### 5. 为什么不能先把所有输入读完
-
-错误思路：
-
-```python
-all_items = [item async for item in source]
-for item in all_items:
-    await queue.put(item)
-```
-
-这已经把全部输入放进内存，Queue 的容量限制失去了意义。
-
-正确思路是：
-
-```text
-从 source 取一个
-↓
-put 一个
-↓
-如果 Queue 满，就等
-↓
-有空位后再继续从 source 取
-```
-
-### 6. AsyncIterable 是什么
-
-本课练习里的 `source` 是 **AsyncIterable（异步可迭代对象）**。
-
-它和 Lesson 00 的 iterable 很像，区别是：取得“下一项”的过程本身可能需要异步等待，因此使用：
-
-```python
-async for item in source:
-    ...
-```
-
-你现在只需要把它理解为：
-
-> “可以逐项异步读取的数据源。”
-
-不需要在这一课研究 `__aiter__` / `__anext__` 的底层协议。
-
-### 7. `task_done()` 和 `join()` 是什么
-
-consumer 从 Queue `get()` 一个 item 后，处理完成时调用：
+consumer 处理完一个 item 后调用：
 
 ```python
 queue.task_done()
 ```
 
-它的意思是：“刚才取走的那一项，现在真的处理完了。”
-
-另一边可以：
+另一边可以用：
 
 ```python
 await queue.join()
 ```
 
-等待“所有已经放进 Queue 的工作都被标记为完成”。
-
-注意：`get()` 只表示拿走了，`task_done()` 才表示处理完了。
-
-### 8. sentinel 和 drain
-
-worker 常常是循环等待下一项：
-
-```python
-while True:
-    item = await queue.get()
-```
-
-业务工作全部结束后，需要告诉 worker“没有下一项了”。一个常见办法是放入一个特殊值作为结束信号，这个值叫 **sentinel（哨兵值/结束标记）**。
-
-**drain（排空）**则表示：
-
-> 停止接收新工作，但把已经接收的工作继续处理完。
-
-Lesson 11 会把 drain 放到 graceful shutdown 中进一步讨论。
+等待所有已入队工作都真正处理完成。`get()` 只是“取走”，`task_done()` 才表示“处理完成”。
 
 ## 脑内执行模型
 
 ```text
-producer: put put put [Queue 满......等待] put
-consumer:       get ─ work ─ task_done ─ get ─ work
+producer: put put put [queue full......wait] put
+consumer:       get ─ work ─ done ─ get ─ work
                          时间 →
 ```
 
 ## 常见误解
 
-- **误区：Queue 越大，吞吐一定越高。** 大 Queue 很多时候只是让积压更晚暴露，并增加内存与等待时间。
-- **误区：有 Semaphore 就不需要 Queue。** Semaphore 控制 active concurrency，Queue 还能限制 backlog。
-- **误区：producer 可以先把所有输入读取完。** 这样 backpressure 无法传回真正的数据源。
-- **误区：`queue.get()` 以后就算处理完成。** 处理结束后还要调用 `task_done()`，`join()` 才能知道整批工作已经完成。
+- **误区：** Queue 越大吞吐越高。大 Queue 往往只是把过载隐藏得更久。
+- **误区：** 有 Semaphore 就不需要 Queue。Semaphore 控制 active，Queue 还能控制 backlog。
+- **误区：** producer 可以先把所有输入读完。这样 backpressure 无法传回上游。
+- **误区：** `queue.get()` 后就算处理完成。处理完成后仍应调用 `task_done()`。
 
 ## 本节规则总结
 
-1. producer 产生工作，consumer 处理工作，Queue 负责在它们之间传递工作。
-2. bounded Queue 限制等待中的 backlog。
-3. Queue 满时 producer 等待，就是 backpressure 正在生效。
-4. producer 不应提前把全部 source 读进内存。
-5. `task_done()` 表示一项真正处理完；`join()` 等待所有已入队工作完成。
-6. worker 的结束方式要明确设计，例如使用 sentinel。
+1. producer 产生工作，consumer 处理工作，Queue 在它们之间传递工作。
+2. bounded Queue 限制 backlog。
+3. Queue 满时 producer 等待，就是 backpressure。
+4. producer 应逐项读取 source，不要提前 materialize（把全部内容一次性读入内存）。
+5. shutdown 时要明确 drain 还是直接丢弃剩余工作。
 
 ## 关键问题
 
 1. producer、Queue、consumer 各负责什么？
-2. Queue `maxsize=10` 限制的是 active concurrency 还是 backlog？
-3. 为什么 Queue 满时让 `put()` 等待是一件好事？
-4. 为什么 producer 不能先把 AsyncIterable 全部读完再入队？
-5. `get()`、`task_done()`、`join()` 各表达什么状态？
-6. sentinel 是用来解决什么问题的？
-7. drain 与“直接丢掉队列里剩余工作”有什么业务差异？
+2. `maxsize` 限制的是 active concurrency 还是 backlog？
+3. 为什么 Queue 满时让 `put()` 等待是合理行为？
+4. 为什么不能先把 AsyncIterable 全部读完再入队？
+5. `get()`、`task_done()`、`join()` 分别表达什么？
+6. sentinel 和 drain 各解决什么问题？
 
 ## 场景命题
 
-实现一个流水线：从一个 AsyncIterable 数据源逐项读取 job，通过有 `maxsize` 的 Queue 交给固定数量的 worker 处理。
-
-如果 source 很快而 worker 很慢，producer 必须在 Queue 满时停下来，不能提前把所有 job 都读取进内存。
+实现 producer → bounded Queue → 固定数量 worker 的流水线。source 很快时必须被 Queue 反压，不能提前把所有 job 读进内存。
 
 ## 验收
 
-测试会确认：
-
-- 所有 job 都恰好处理一次；
-- producer 最多只能领先一个受 Queue 容量限制的数量；
-- worker 能在工作结束后干净退出。
+测试会确认所有 job 恰好处理一次、producer 的领先量有上界，并且 worker 能干净退出。
 
 仓库参考实现：
 
