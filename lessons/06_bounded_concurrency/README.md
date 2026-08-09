@@ -12,6 +12,7 @@
 - **downstream（下游）**：当前代码接下来要调用、并且可能有容量限制的外部服务或资源。
 - **active concurrency（正在占用资源的并发量）**：此刻真正进入受保护区域、正在使用稀缺资源的工作数量。
 - **backlog（积压）**：已经进入系统，但还没有轮到真正处理的工作。
+- **peak（峰值）**：一段观察时间里，某个数量曾经达到过的最大值。
 - **rate limit（速率限制）**：限制单位时间内最多允许启动多少次调用，而不是限制同一时刻有多少调用正在进行。
 
 ## 本节目标
@@ -22,11 +23,11 @@
 - 用 `Semaphore` 表达 active concurrency 上限；
 - 区分 active concurrency 与 backlog；
 - 区分 concurrency limit 与 rate limit；
-- 测量真实峰值 active concurrency。
+- 测量真实 peak active concurrency。
 
 ## 为什么需要学习它
 
-输入数量可以远远大于下游真正能同时承受的调用数量。
+输入数量可以远远大于 downstream 真正能同时承受的调用数量。
 
 例如系统有 10 万条 job，但某个 downstream 同一时间只允许 20 个调用。把 10 万个 Task 全部同时推进到这个资源，并不会让处理更快，只会制造更多等待、内存占用和 timeout。
 
@@ -117,7 +118,7 @@ rate limit        → 这一秒最多允许启动多少个新调用？
 
 本课只要求你先能区分；最后一课会把两种限制放进同一个长期运行服务。
 
-### 5. 测试要观察真实 active peak
+### 5. 测试要观察真实 peak
 
 如果想验证并发上限，不能只看代码里有没有 `Semaphore`。
 
@@ -136,7 +137,7 @@ active -= 1
 peak <= limit
 ```
 
-这样测试的是实际行为，而不是某个 API 名是否出现在源码里。
+这样测试的是实际行为，而不是某个工具名是否出现在源码里。
 
 ## 脑内执行模型
 
@@ -170,7 +171,7 @@ J3 ─ prepare ─ wait permit ─ [resource]
   **更准确：** 它应该尽量只包围真正消耗稀缺资源的部分。
 
 - **误区：** 测试只要搜索到 `Semaphore` 就能证明行为正确。  
-  **更准确：** 应观察真实 active peak。
+  **更准确：** 应观察真实 peak。
 
 ## 本节规则总结
 
@@ -179,7 +180,8 @@ J3 ─ prepare ─ wait permit ─ [resource]
 3. 通行证只覆盖真正占用资源的必要范围。
 4. Bounded concurrency 不等于 bounded backlog。
 5. Concurrency limit 与 rate limit 控制不同维度。
-6. 验收并发上限时，应观察真实 active peak。
+6. Peak 表示观察期间出现过的最大数量。
+7. 验收并发上限时，应观察真实 active peak。
 
 ## 关键问题
 
@@ -187,10 +189,11 @@ J3 ─ prepare ─ wait permit ─ [resource]
 2. `Semaphore(10)` 的 10 表示什么？
 3. downstream 是什么意思？
 4. active concurrency 与 backlog 有什么区别？
-5. 为什么 `Semaphore` 应尽量只包住真正稀缺的资源区？
-6. 为什么 bounded concurrency 仍可能有巨大 backlog？
-7. concurrency limit 和 rate limit 分别控制什么？
-8. 为什么行为测试比搜索 `Semaphore` 字符串更可靠？
+5. peak 在测试里表达什么？
+6. 为什么 `Semaphore` 应尽量只包住真正稀缺的资源区？
+7. 为什么 bounded concurrency 仍可能有巨大 backlog？
+8. concurrency limit 和 rate limit 分别控制什么？
+9. 为什么行为测试比搜索某个工具名更可靠？
 
 ## 场景命题
 
