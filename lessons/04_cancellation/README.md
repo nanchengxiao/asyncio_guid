@@ -4,18 +4,64 @@
 
 学完本节，你应该能够：
 
-- 解释 `task.cancel()` 是取消请求而不是强制终止
-- 正确传播 `CancelledError`
-- 用 try/finally 保证 cleanup
-- 识别吞掉 cancellation 的危险
+- 解释 `task.cancel()` 为什么是“请求取消”而不是强制杀死 Task
+- 理解 `CancelledError` 的作用
+- 正确让 cancellation 继续向外传播
+- 用 `try/finally` 保证资源清理
+
+## 进入本课前
+
+你已经学过：Task、TaskGroup、Task owner，以及 Lesson 00 的 `finally`/cleanup。
+
+上一课只把 cancel 暂时理解成“请求一个 Task 停止”；这一课正式学习它的执行语义。
 
 ## 为什么需要学习它
 
-服务关闭、请求断开、父任务失败都会产生 cancellation。它不是罕见异常，而是异步系统的核心控制流。代码若把它吞掉，shutdown 就可能卡死或留下半完成资源。
+异步任务并不总是自然跑到结尾。调用者可能已经不需要结果，父业务操作可能失败，程序也可能正在结束。
+
+**cancellation（取消）** 就是 asyncio 用来表达“这份异步工作现在应该停止”的控制流。
+
+如果代码把取消当成普通错误随手吞掉，Task 可能继续做已经没有意义的工作，资源也可能无法按预期收尾。
 
 ## 核心理论
 
-`task.cancel()` 会安排向目标 Task 注入 `CancelledError`。目标 Task 要运行到可响应取消的位置才能观察它。
+### 1. `task.cancel()` 做了什么
+
+```python
+task.cancel()
+```
+
+它不是立即终止线程，也不是把 Task 从内存里删除。
+
+更准确地说，它会**向这个 Task 发出取消请求**。Task 需要继续被调度，并运行到能够响应取消的位置，才会真正观察到取消。
+
+### 2. `CancelledError` 是什么
+
+Task 响应取消时，异步代码会看到 `asyncio.CancelledError`。
+
+可以把它理解成 asyncio 专门用来表示：
+
+> “这次工作不是正常完成，也不是普通业务失败，而是上层要求停止。”
+
+### 3. 为什么要让 cancellation 传播
+
+这里的**传播（propagation）**就是“当前这一层观察到取消后，让调用它的上一层也继续知道这件事”。
+
+```python
+try:
+    await do_work()
+except asyncio.CancelledError:
+    log_cancelled()
+    raise
+```
+
+`raise` 会继续把取消向外传。
+
+如果捕获 `CancelledError` 后直接返回一个正常值，上层就可能误以为工作成功完成。
+
+### 4. cleanup 为什么放在 `finally`
+
+Lesson 00 已经学过：`finally` 适合表达“无论怎样离开这里，都必须发生的收尾”。
 
 ```python
 async def upload():
@@ -26,45 +72,53 @@ async def upload():
         await resource.close()
 ```
 
-若需要记录取消，可以捕获后 `raise`；除非你非常明确地把取消转化为别的业务语义，否则不要假装成功返回。
+无论上传正常结束、发生异常，还是收到 cancellation，资源清理都处在同一个明确的位置。
+
+### 5. cancellation 是合作式的
+
+asyncio 不会在任意一条 Python 指令中间强制把 Task 杀掉。
+
+如果一段代码长时间不 `await`、也没有其他可响应取消的点，那么 `cancel()` 发出以后，Task 可能还会继续运行一段时间。
+
+这和前面学过的 Event Loop 合作式调度是一致的。
 
 ## 脑内执行模型
 
 ```text
-Task upload:  work ── await .......... CancelledError ── finally cleanup ── cancelled
-caller:                              cancel() ─────────────── await task ── sees cancellation
+Task upload: work ── await ........ CancelledError ── finally cleanup ── cancelled
+caller:                         cancel() ───────────── await task ── 看见取消
 ```
 
 ## 常见误解
 
-- **误区：** cancel() 会立即杀掉 Task。它是合作式取消请求。
-- **误区：** `except Exception` 一定会捕获 CancelledError。现代 Python 中 CancelledError 继承 BaseException，且不应依赖大而泛的捕获处理取消。
-- **误区：** cleanup 只要是同步代码就不会被取消。异步 cleanup 本身也可能遇到取消/异常，需要明确策略。
-- **误区：** 取消后返回默认值更友好。这会欺骗上层，让它误判操作成功。
+- **误区：`cancel()` 会立刻杀掉 Task。** 它发出取消请求，Task 需要获得执行机会才能响应。
+- **误区：取消就是普通失败。** cancellation 表示“上层不再需要这份工作”，语义和业务异常不同。
+- **误区：捕获 `CancelledError` 后返回默认值更友好。** 这会让上层误判操作成功。
+- **误区：有 `except` 就不需要 `finally`。** `except` 用来处理特定异常，`finally` 更适合必须执行的资源清理。
 
 ## 本节规则总结
 
-1. 取消是控制流，不是罕见边缘情况。
-2. `cancel()` 请求取消；目标 Task 在执行中观察 `CancelledError`。
-3. 资源释放放进 finally。
-4. 记录 cancellation 后通常重新抛出。
-5. 父子任务的 cancellation propagation 应当事先设计。
+1. `cancel()` 是取消请求，不是强制终止。
+2. Task 通过 `CancelledError` 观察取消。
+3. cancellation 通常应该继续向调用者传播。
+4. 必须执行的 cleanup 放进 `finally`。
+5. 长时间不让出执行机会的代码也无法及时响应取消。
 
 ## 关键问题
 
-1. 调用 cancel 后为什么 Task 可能暂时还没结束？
-2. 在哪些代码点 cancellation 最容易被观察到？
-3. 为什么 finally 比 except 更适合资源清理？
-4. 吞掉 CancelledError 会对 TaskGroup/shutdown 造成什么影响？
-5. 异步 cleanup 如果也可能卡住，应增加什么边界？
+1. 为什么调用 `cancel()` 后 Task 可能还没有立刻结束？
+2. `CancelledError` 与普通业务异常表达的含义有什么不同？
+3. 为什么捕获 `CancelledError` 后通常还要 `raise`？
+4. 为什么 `finally` 适合放资源清理？
+5. 如果一段 coroutine 很久都不 `await`，它对 cancellation 会有什么影响？
 
 ## 场景命题
 
-实现分片上传：逐块 await 发送，整个上传无论正常完成还是被取消都必须调用 cleanup；被取消时不能伪装成成功。
+实现分片上传：逐块等待发送。整个上传无论正常完成还是被取消，都必须执行 cleanup；被取消时不能伪装成成功。
 
 ## 验收
 
-测试在上传进行中 cancel Task，确认 cleanup 执行一次，且 await 该 Task 仍得到 CancelledError。
+测试会在上传进行中调用 `cancel()`，确认 cleanup 恰好执行一次，并且等待该 Task 的调用者仍然能看到 `CancelledError`。
 
 仓库参考实现：
 
