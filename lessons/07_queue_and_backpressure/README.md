@@ -6,13 +6,13 @@
 
 ## 本课新增术语
 
-- **Queue（队列）**：在多份异步工作之间临时存放待处理 item 的容器；一边放进去，另一边取出来处理。
+- **Queue（队列）**：在多份 async 工作之间临时存放待处理 item 的容器；一边放进去，另一边取出来处理。
 - **producer（生产者）**：负责产生待处理 item，并把它们放进 Queue 的代码。
 - **consumer（消费者）**：从 Queue 取出 item 并处理的代码；本课的 worker 就是 consumer。
 - **bounded Queue（有容量上限的队列）**：设置了 `maxsize`，最多只允许一定数量 item 在 Queue 里等待。
-- **backpressure（反压）**：下游处理不过来时，让上游也慢下来，而不是继续无限堆积等待工作。
-- **AsyncIterable（异步可迭代对象）**：可以用 `async for` 逐项读取的数据源，而且“取得下一项”本身可能需要等待。
-- **`async for`**：逐项读取 AsyncIterable 的语法；每次取下一项时都允许异步等待。
+- **backpressure（反压）**：downstream 处理不过来时，让上游也慢下来，而不是继续无限堆积等待工作。
+- **AsyncIterable（异步可迭代对象）**：一种逐项取得数据时允许等待的数据源；请求下一项不一定能立刻拿到结果。
+- **`async for`**：逐项读取 AsyncIterable 的 Python 语法；每次取得下一项时都允许 async 等待。
 - **sentinel（结束标记）**：放进 Queue 的一个特殊值，用来告诉 consumer“已经没有新工作了”。
 - **drain（排空）**：停止接收新的工作，但把已经接收的工作继续处理完。
 - **pipeline（流水线）**：把多个处理环节串起来，让数据从上一环节流向下一环节的结构。
@@ -36,7 +36,7 @@
 
 假设 producer 每秒产生 10 万条 item，而 consumer 每秒只能处理 1 万条。只要这个速度差长期存在，backlog 就会不断变大。
 
-系统不能靠“多给一点内存”永久解决这个问题。必须让等待区有上限，并在下游跟不上时让 producer 感受到压力。
+系统不能靠“多给一点内存”永久解决这个问题。必须让等待区有上限，并在 downstream 跟不上时让 producer 感受到压力。
 
 ## 核心理论
 
@@ -166,7 +166,7 @@ Sentinel 不是 asyncio 特殊对象；它只是双方约定的特殊值。
 
 策略 B 就是 drain。
 
-本课只先建立这个词；最后一课会把 drain 放进完整服务的停止流程中。
+本课只先建立这个词；最后一课会把 drain 放进完整程序的停止流程中。
 
 ## 脑内执行模型
 
@@ -226,11 +226,13 @@ source 暂时不再继续读
 2. bounded Queue 的 `maxsize` 限制的是 active concurrency 还是 backlog？
 3. backpressure 用白话怎样解释？
 4. 为什么 Queue 满时让 `put()` 等待是合理行为？
-5. 为什么不能先把 AsyncIterable 全部读完再入队？
-6. `get()`、`task_done()`、`join()` 分别表达什么？
-7. sentinel 解决什么问题？
-8. drain 与立即丢弃剩余工作有什么区别？
-9. pipeline 在本课里是什么意思？
+5. AsyncIterable 与普通 iterable 的关键差别是什么？
+6. `async for` 为什么适合逐项读取 AsyncIterable？
+7. 为什么不能先把 AsyncIterable 全部读完再入队？
+8. `get()`、`task_done()`、`join()` 分别表达什么？
+9. sentinel 解决什么问题？
+10. drain 与立即丢弃剩余工作有什么区别？
+11. pipeline 在本课里是什么意思？
 
 ## 场景命题
 
