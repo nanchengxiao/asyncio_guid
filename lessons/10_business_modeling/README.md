@@ -2,22 +2,23 @@
 
 ## 进入本课前
 
-你已经学过 Task ownership、TaskGroup、timeout、cancellation、required / optional dependency、resource capacity、backpressure、connection pool 和 blocking I/O。
+你已经学过 Task ownership、TaskGroup、timeout、cancellation、required / optional dependency、resource 容量、backpressure、connection pool 和 blocking I/O。
 
 ## 本课新增术语
 
 - **six-question model（六问模型）**：编码前固定回答六类设计问题的检查表，用来把业务要求先翻译成执行结构。
-- **node（节点）**：依赖图中的一个业务工作单元，例如“获取 user”或“获取 orders”。
-- **edge（依赖箭头）**：表示一个 node 必须先拿到另一个 node 的结果才能开始。
-- **DAG（Directed Acyclic Graph，有向无环图）**：一张用 node 和 edge 表示“谁依赖谁”的图，而且依赖不会绕一圈回到自己。
+- **node（节点）**：把一次业务过程画成方框和箭头时，其中代表一份具体工作的方框，例如“获取 user”。
+- **edge（依赖箭头）**：连接两个 node 的箭头；它表示箭头后面的 node 必须先拿到前面 node 的结果才能开始。
+- **DAG（Directed Acyclic Graph，有向无环图）**：一张用 node 和 edge 表示“谁依赖谁”的图，而且 dependency 不会绕一圈回到自己。
 - **failure semantics（失败语义）**：某个 node 失败后，业务上应该整体失败、degradation，还是继续处理其他结果。
+- **service（服务程序）**：这里指持续对其他代码或 request 提供某种业务能力的程序。
 - **aggregator（聚合器）**：从多个来源取得数据，再把它们组合成一个业务结果的那层代码。
 
 ## 本节目标
 
 学完本节，你应该能够：
 
-- 使用 six-question model 分析异步业务；
+- 使用 six-question model 分析业务；
 - 把业务 data dependency 画成 DAG；
 - 在编码前决定 required / optional failure semantics；
 - 让 Task ownership 与业务边界对齐；
@@ -30,10 +31,10 @@
 真正复杂的是业务本身：
 
 - 哪些步骤彼此独立？
-- 哪些步骤必须等上游结果？
-- 哪些失败会让整个请求失效？
+- 哪些步骤必须等 upstream 结果？
+- 哪些失败会让整个 operation 失效？
 - 哪些失败可以 degradation？
-- 哪些步骤共享同一个稀缺资源？
+- 哪些步骤共享同一个稀缺 resource？
 - 谁拥有每个 Task？
 
 如果这些问题没有先回答，代码很容易变成“看到 I/O 就 create_task”，最后得到错误的 concurrency 结构。
@@ -42,13 +43,13 @@
 
 ### 1. 先回答 six-question model
 
-面对一个异步业务，编码前先回答：
+面对一个业务，编码前先回答：
 
 1. 工作单元是什么？
 2. 谁依赖谁？
 3. 哪些工作可以同时开始？
-4. 稀缺资源的并发上限是什么？
-5. failure / timeout / cancellation 分别怎样影响业务结果？
+4. 稀缺 resource 的 concurrency limit 是什么？
+5. 失败、timeout、cancellation 分别怎样影响业务结果？
 6. 每个 Task 的 owner 是谁？
 
 这六问不是新的 asyncio API，而是一套先做业务建模的顺序。
@@ -65,7 +66,7 @@
 DAG：
 
 ```text
-request
+operation
   ├─ user (required) ─────────→ account (required)
   └─ orders (required) ───────→ recommendations (optional)
 ```
@@ -89,7 +90,7 @@ user
 orders
 ```
 
-二者只共享 request 输入，彼此没有 data dependency，所以可以同时开始。
+二者只共享 operation 输入，彼此没有 data dependency，所以可以同时开始。
 
 第二层：
 
@@ -104,17 +105,17 @@ recommendations ← 等 orders
 
 > 每个 node 最早什么时候具备开始条件？
 
-### 4. DAG 不等于资源上限
+### 4. DAG 不等于 resource 上限
 
 即使 DAG 允许两个 node 同时开始，也不代表它们一定应该无限 concurrency。
 
-例如两个 node 都访问同一个只有少量连接的 downstream，那么还要同时应用前面学过的 resource capacity 限制。
+例如两个 node 都访问同一个只有少量 connection 的 downstream，那么还要同时应用前面学过的 resource 容量限制。
 
 所以要分开：
 
 ```text
-DAG               → 业务依赖允许什么时候开始
-resource capacity → 资源最多允许多少工作同时占用
+DAG           → 业务 dependency 允许什么时候开始
+resource 容量 → resource 最多允许多少工作同时占用
 ```
 
 ### 5. Failure semantics 先于 `except`
@@ -124,11 +125,11 @@ resource capacity → 资源最多允许多少工作同时占用
 例如：
 
 ```text
-account failure
+account 失败
 → required
 → 当前完整业务结果不能成立
 
-recommendations failure
+recommendations 失败
 → optional
 → 可以 degradation
 ```
@@ -148,47 +149,47 @@ except Exception:
 
 Recommendations 是 optional，只表示它的业务结果可以缺失。
 
-如果整个 request 已经收到 cancellation，上层根本不再需要结果，就不应该因为 recommendations optional 而继续吞掉 cancellation。
+如果整个 operation 已经收到 cancellation，上层根本不再需要结果，就不应该因为 recommendations optional 而继续吞掉 cancellation。
 
 所以需要继续保持前面建立的规则：
 
 ```text
-optional failure → 可以 degradation
-caller cancellation → 继续 propagation
+optional 依赖失败 → 可以 degradation
+调用者发来 cancellation → 继续 propagation
 ```
 
 ### 7. Task ownership 应与业务边界一致
 
-一次 request 创建的短生命周期 Task，通常应该由这次 request 对应的代码边界负责。
+一次 operation 创建的短 lifecycle Task，通常应该由这次 operation 对应的代码边界负责。
 
-不要让 request 已经返回，但它创建的业务 Task 还在后台孤立运行。
+不要让 operation 已经返回，但它创建的业务 Task 还在后台孤立运行。
 
-如果某份工作确实需要超过 request 生命周期，就必须有一个更长生命周期、明确的 owner 接管它。
+如果某份工作确实需要超过 operation lifecycle，就必须有一个更长 lifecycle、明确的 owner 接管它。
 
 ## 脑内执行模型
 
 ```text
-T0: start user + orders
+第一步：同时开始 user + orders
 
-T1: user done ─────────────→ start account
-    orders done ───────────→ start recommendations
+第二步：user 完成   ─────────→ 开始 account
+        orders 完成 ─────────→ 开始 recommendations
 
-T2: account required
-    recommendations optional
+第三步：account 是 required
+        recommendations 是 optional
 
-T3: apply failure semantics
-    build response
+第四步：应用 failure semantics
+        组合最终结果
 ```
 
-同时还要叠加资源限制：
+同时还要叠加 resource 限制：
 
 ```text
 DAG 允许开始
     ↓
-资源是否还有容量？
+resource 是否还有容量？
     ↓
 有 → 真正进入 downstream
-无 → 等待资源
+无 → 等待 resource
 ```
 
 ## 常见误解
@@ -200,13 +201,13 @@ DAG 允许开始
   **更准确：** Task 创建时机应该反映 edge 表达的 dependency。
 
 - **误区：** optional 就是 `except Exception: pass`。  
-  **更准确：** optional 只说明业务允许 degradation，不代表能吞掉 caller cancellation。
+  **更准确：** optional 只说明业务允许 degradation，不代表能吞掉调用者的 cancellation。
 
 - **误区：** failure semantics 就是“异常怎么写”。  
   **更准确：** 它先决定业务结果，再决定用什么异常结构实现。
 
-- **误区：** DAG 已经决定了 concurrency 上限。  
-  **更准确：** DAG 决定依赖；resource capacity 决定同时能占用多少资源。
+- **误区：** DAG 已经决定了 concurrency limit。  
+  **更准确：** DAG 决定 dependency；resource 容量决定同时能占用多少 resource。
 
 - **误区：** 业务建模会降低 concurrency。  
   **更准确：** 它减少错误 concurrency；真正独立的工作仍应尽早重叠等待。
@@ -218,9 +219,9 @@ DAG 允许开始
 3. DAG 决定 node 最早什么时候可以开始。
 4. Required / optional 属于 failure semantics。
 5. Failure semantics 应先于具体 `except` 写法。
-6. Optional failure 可以 degradation，但不能顺手吞 caller cancellation。
-7. Task owner 应对应清楚的业务生命周期。
-8. DAG 与 resource capacity 是两条不同约束。
+6. Optional 依赖失败可以 degradation，但不能顺手吞调用者的 cancellation。
+7. Task owner 应对应清楚的业务 lifecycle。
+8. DAG 与 resource 容量是两条不同约束。
 
 ## 关键问题
 
@@ -231,12 +232,15 @@ DAG 允许开始
 5. failure semantics 与“写哪个 except”有什么区别？
 6. recommendations optional 失败时应该怎样处理？
 7. account required 失败时为什么通常不能当成完整成功？
-8. 如果两个 node 无 dependency，却共用同一个小连接池，还要考虑什么？
-9. Task ownership 为什么应该跟业务生命周期对齐？
+8. 如果两个 node 无 dependency，却共用同一个小 connection pool，还要考虑什么？
+9. Task ownership 为什么应该跟业务 lifecycle 对齐？
+10. service 与 aggregator 在本课里分别是什么意思？
 
 ## 场景命题
 
-先填写 `practice/DESIGN.md`，再实现 Async Service Aggregator。
+先填写 `practice/DESIGN.md`，再实现 `Async Service Aggregator`。
+
+这个练习名表示“用 async 方式从多个来源取得数据并组合结果的 service”。
 
 业务关系：
 
@@ -250,9 +254,9 @@ DAG 允许开始
 - user / orders 第一层尽早同时开始；
 - account 只能在 user 完成后开始；
 - recommendations 只能在 orders 完成后开始；
-- optional failure 可以 degradation；
-- required failure 继续向外报告；
-- caller cancellation 不能被 optional 处理吞掉。
+- optional 依赖失败可以 degradation；
+- required 依赖失败继续向外报告；
+- 调用者的 cancellation 不能被 optional 处理吞掉。
 
 ## 验收
 
@@ -261,9 +265,9 @@ DAG 允许开始
 - DAG 启动顺序正确；
 - 第一层等待确实重叠；
 - 第二层遵守各自 dependency；
-- optional failure 被正确隔离；
-- required failure 正确向外报告；
-- Task 生命周期没有越过业务 owner 边界。
+- optional 依赖失败被正确隔离；
+- required 依赖失败正确向外报告；
+- Task lifecycle 没有越过业务 owner 边界。
 
 仓库参考实现：
 
