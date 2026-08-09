@@ -9,7 +9,7 @@
 输入：
 
 - `records`：一批可以逐个读取的记录；
-- `close_resource()`：关闭底层资源的回调函数。
+- `close_resource()`：调用它就会关闭底层资源的函数。
 
 输出：一个 context manager。进入 `with` 后，调用者可以逐条取得记录。
 
