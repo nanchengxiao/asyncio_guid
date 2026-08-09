@@ -13,13 +13,16 @@
 - **iterable（可迭代对象）**：一份“可以开始逐项读取”的数据，例如 list、tuple、字符串。
 - **iterator（迭代器）**：一次具体的逐项读取过程；它自己记得“已经读到哪里”。
 - **`StopIteration`**：告诉调用方“已经没有下一项了”的结束信号。
-- **generator（生成器）**：一种可以在 `yield` 处交出一个值并暂停、以后再从原位置继续的 iterator。
 - **`yield`**：先把一个值交给调用方，同时把当前执行位置保留下来，下一次再从这里继续。
+- **generator（生成器）**：一种可以在 `yield` 处交出一个值并暂停、以后再从原位置继续的 iterator。
+- **generator function（生成器函数）**：函数体中使用了 `yield` 的函数；调用它时通常不会立刻跑完整个函数体。
+- **generator object（生成器对象）**：调用 generator function 后得到的 iterator；它保存暂停位置，之后可以继续。
 - **lazy（按需/惰性处理）**：需要一个元素时才产生或读取一个，不提前把后面的全部数据准备好。
-- **resource（资源）**：用完需要关闭、释放或归还的东西，例如文件或连接。
-- **cleanup（清理/收尾）**：关闭、释放、归还资源这类必须做的动作。
+- **resource（资源）**：用完后需要明确关闭、释放或归还的东西，例如打开的文件或数据源。
+- **cleanup（清理/收尾）**：关闭、释放、归还 resource 这类必须做的动作。
 - **`finally`**：离开对应 `try` 范围前一定会执行的收尾代码块。
-- **context manager（上下文管理器）**：让 `with` 可以表达“进入资源 → 使用 → 退出并清理”的对象。
+- **`with`**：用一个缩进代码块明确表示“进入某个使用范围，结束时再退出这个范围”的 Python 语法。
+- **context manager（上下文管理器）**：让 `with` 能够执行“进入 → 使用 → 退出并 cleanup”这套流程的对象。
 - **callback（回调函数）**：把一个函数当作值传进去，等到需要时再调用它。
 - **stream（流）**：这里先理解成“可以一条一条取得的数据来源”，不表示某个特殊 Python 类型。
 - **`@contextmanager`**：把一个只 `yield` 一次的 generator function 包装成可用于 `with` 的 context manager 的标准库工具。
@@ -33,17 +36,17 @@
 - 解释 generator 为什么能暂停并恢复；
 - 解释 `yield` 与 `return` 的关键区别；
 - 解释 lazy 为什么等价于“需要一个才读取一个”；
-- 用 `finally` 和 context manager 保证资源可靠 cleanup；
-- 实现一个按需读取、退出时一定关闭资源的小工具。
+- 用 `finally` 和 context manager 保证 resource 可靠 cleanup；
+- 实现一个按需读取、退出时一定关闭 resource 的小工具。
 
 ## 为什么需要学习它
 
-后面的异步课程会反复遇到两个执行问题：
+后面的课程会反复遇到两个执行问题：
 
 1. 一段工作可以先停在某个位置，之后再从那个位置继续；
 2. 一段工作即使提前结束，也必须可靠地做收尾。
 
-这一课先用普通 Python 把这两个行为看清楚。这样后面进入异步代码时，不需要同时学习新语法和新执行模型。
+这一课先用普通 Python 把这两个行为看清楚。这样后面学习新的执行方式时，不需要同时猜新语法和新执行模型。
 
 ## 核心理论
 
@@ -145,7 +148,7 @@ def count_two():
     print("C")
 ```
 
-函数体里有 `yield`，所以 `count_two` 是一个 generator function。
+函数体里有 `yield`，所以 `count_two` 是 generator function。
 
 ```python
 g = count_two()
@@ -261,9 +264,9 @@ produce 1
 不需要了 → 后面的先不取
 ```
 
-### 7. 为什么资源需要 cleanup
+### 7. 为什么 resource 需要 cleanup
 
-资源不是特殊 Python 类型。只要“用完后必须关闭、释放或归还”，就应该明确谁负责 cleanup。
+Resource 不是特殊 Python 类型。只要“用完后必须关闭、释放或归还”，就应该明确谁负责 cleanup。
 
 ```python
 f = open("data.txt")
@@ -279,7 +282,7 @@ text = risky_read(f)  # 这里失败
 f.close()             # 这一行不会执行
 ```
 
-资源就可能没有被关闭。
+Resource 就可能没有被关闭。
 
 ### 8. `finally`：离开前一定做收尾
 
@@ -349,7 +352,7 @@ with open("data.txt") as f:
 ```text
 进入 with
    ↓
-获得资源
+获得 resource
    ↓
 执行缩进代码块
    ↓
@@ -493,7 +496,7 @@ with managed_records(source(), close_resource) as records:
 什么时候读取下一条？
 → 调用方真正调用 next() 时
 
-什么时候确定执行资源关闭？
+什么时候确定执行 resource 关闭？
 → 退出 with 时
 ```
 
@@ -518,7 +521,7 @@ with managed_records(source(), close_resource) as records:
   **更准确：** `except` 决定是否处理异常；`finally` 负责必须做的收尾。
 
 - **误区：** 调用方一 `break`，generator 一定立即 cleanup。  
-  **更准确：** 本课不依赖这个假设，资源关闭由 `with` 的生命周期保证。
+  **更准确：** 本课不依赖这个假设，resource 关闭由 `with` 的进入/退出边界保证。
 
 ## 本节规则总结
 
@@ -529,9 +532,9 @@ with managed_records(source(), close_resource) as records:
 5. `yield` 交出一个值并暂停；下一次从原位置继续。
 6. lazy 就是按需读取，不提前把后面的内容取出来。
 7. `finally` 适合表达必须发生的收尾。
-8. `with` / context manager 给资源建立明确的使用边界。
+8. `with` / context manager 给 resource 建立明确的使用边界。
 9. `@contextmanager` 用一次 `yield` 把进入阶段和退出阶段分开。
-10. 调用方是否提前停止，与资源最终由谁负责关闭，是两个不同问题。
+10. 调用方是否提前停止，与 resource 最终由谁负责关闭，是两个不同问题。
 
 ## 关键问题
 
@@ -539,16 +542,17 @@ with managed_records(source(), close_resource) as records:
 2. `iter([1, 2, 3])` 得到什么？
 3. 谁保存“这次遍历已经走到哪里”的状态？
 4. `for x in values` 与 `iter()` / `next()` 有什么关系？
-5. 为什么调用 generator function 时函数体不会立刻跑完？
-6. 第一次执行到 `yield 1` 后，下一次从哪里恢复？
-7. `return` 与 `yield` 最重要的区别是什么？
-8. lazy 行为可以通过什么具体输出观察？
-9. 为什么 `list(records)` 会违反按需读取？
-10. `finally` 与 `except` 的职责有什么区别？
-11. `with X() as value` 中的 `value` 大致从哪里来？
-12. `@contextmanager` 中，`yield` 前、`yield` 的值、`yield` 后分别做什么？
-13. 为什么不能形成“`break` ⇒ generator 立即 cleanup”的规则？
-14. 本课 practice 中，是什么边界保证 `close_resource()` 被调用？
+5. generator function 与 generator object 有什么区别？
+6. 为什么调用 generator function 时函数体不会立刻跑完？
+7. 第一次执行到 `yield 1` 后，下一次从哪里恢复？
+8. `return` 与 `yield` 最重要的区别是什么？
+9. lazy 行为可以通过什么具体输出观察？
+10. 为什么 `list(records)` 会违反按需读取？
+11. `finally` 与 `except` 的职责有什么区别？
+12. `with X() as value` 中的 `value` 大致从哪里来？
+13. `@contextmanager` 中，`yield` 前、`yield` 的值、`yield` 后分别做什么？
+14. 为什么不能形成“`break` ⇒ generator 立即 cleanup”的规则？
+15. 本课 practice 中，是什么边界保证 `close_resource()` 被调用？
 
 ## 场景命题
 
@@ -560,7 +564,7 @@ with managed_records(source(), close_resource) as records:
 - 只读取第一条就停止；
 - 在处理过程中抛异常。
 
-无论哪条路径，只要离开 `with`，资源都必须关闭一次。
+无论哪条路径，只要离开 `with`，resource 都必须关闭一次。
 
 调用方式：
 
