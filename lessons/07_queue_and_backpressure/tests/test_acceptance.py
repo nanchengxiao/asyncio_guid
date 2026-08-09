@@ -36,8 +36,8 @@ async def test_bounded_queue_applies_backpressure():
     task = asyncio.create_task(m.run_pipeline(source, handle, queue_size=2, workers=1))
     await started.wait()
     await asyncio.sleep(0.02)
-    # 1 item is active, at most 2 are buffered, and producer may have fetched
-    # one additional item before blocking in queue.put.
+    # 1 个 item 正在处理，Queue 最多缓存 2 个；producer 还可能已经取到
+    # 下一个 item，并在 queue.put() 处等待，因此 produced 最多允许到 4。
     assert source.produced <= 4
     release.set()
     results = await task
