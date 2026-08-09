@@ -1,48 +1,50 @@
-# Lesson 11 — 把前面机制组合成可运行服务
+# Lesson 11 — 把前面机制组合成长期运行的程序
 
 ## 进入本课前
 
 你已经学过 Task lifecycle、cancellation、timeout、Semaphore、bounded Queue、backpressure、connection pool、blocking I/O、DAG、retry、rate limit 和 drain。
 
-本课不会重新定义这些词，而是在它们的基础上增加生产运行需要的约束。
+本课不会重新定义这些词，而是在它们的基础上增加长期运行程序需要的约束。
 
 ## 本课新增术语
 
-- **shutdown（关闭流程）**：服务从“还在正常接收和处理工作”走到“停止运行”的整个过程。
-- **graceful shutdown（优雅关闭）**：shutdown 时先按业务承诺处理在途工作和 resource，再真正退出，而不是直接粗暴丢弃所有工作。
+- **shutdown（关闭流程）**：程序从“还在正常接收和处理工作”走到“停止运行”的整个过程。
+- **graceful shutdown（优雅关闭）**：shutdown 时先按业务承诺处理已经开始的工作和 resource，再真正退出，而不是直接粗暴丢弃所有工作。
 - **attempt（一次尝试）**：针对同一业务 operation 发起的一次具体调用；retry 会产生新的 attempt。
 - **transient failure（暂时性失败）**：过一会儿再试有可能恢复的失败，例如短暂网络故障。
+- **permanent failure（持久性失败）**：再次立即尝试通常也不会改变结果的失败，例如明确的参数错误。
 - **side effect（副作用）**：会改变外部状态的动作，例如写数据库、扣款、发送消息。
-- **idempotency（幂等性）**：同一个业务请求被重复执行时，不会重复产生本不该重复的 side effect。
+- **idempotency（幂等性）**：同一个业务 request 被重复执行时，不会重复产生本不该重复的 side effect。
 - **QPS（Queries Per Second，每秒请求数）**：每秒启动多少次 request 的一种速率表达方式。
 - **rate limiter（速率限制器）**：真正执行 rate limit 规则、决定某个新 request 现在能不能启动的控制组件。
 - **gate（闸门）**：本课对“进入受限 resource 前必须先获得许可”的控制点的白话称呼。
 - **writer（写入器）**：负责把处理结果写入数据库、文件或其他存储位置的处理环节。
 - **counter（计数器）**：只记录某类事件累计发生了多少次的数字。
-- **metrics（指标）**：用数字持续记录系统状态，例如收到多少 job、成功多少、失败多少、retry 多少。
+- **metrics（指标）**：用数字持续记录程序状态，例如收到多少 job、成功多少、失败多少、retry 多少。
 - **structured logging（结构化日志）**：用“事件名 + 明确字段”记录日志，让程序可以按字段查询和分析。
-- **observability（可观测性）**：通过 metrics、日志等外部信号判断系统内部正在发生什么。
+- **observability（可观测性）**：通过 metrics、日志等外部信号判断程序内部正在发生什么。
 - **task leak（任务泄漏）**：本应结束的 Task 因 lifecycle 管理错误长期残留并继续占用 resource。
-- **retry storm（重试风暴）**：大量失败 request 在相近时间集中 retry，反而把已经有压力的 downstream 打得更重。
+- **retry storm（重试风暴）**：大量失败 request 在相近时间集中 retry，反而把已经有压力的 downstream 压得更重。
 
 ## 本节目标
 
 学完本节，你应该能够：
 
 - 设计 graceful shutdown，并明确什么时候需要 drain；
-- 把 concurrency limit 与 rate limit 同时放进一个服务；
-- 为每个 remote attempt 设置 timeout，并限制 retry 条件与次数；
+- 把 concurrency limit 与 rate limit 同时放进一个长期运行程序；
+- 为每个外部调用 attempt 设置 timeout，并限制 retry 条件与次数；
+- 区分 transient failure 与 permanent failure；
 - 解释 idempotency 为什么能保护重复执行；
 - 限制 writer 的 resource capacity；
 - 使用 metrics 与 structured logging 建立基本 observability；
-- 识别 task leak、slow downstream 和 retry storm 的信号。
+- 识别 task leak、变慢的 downstream 和 retry storm 的信号。
 
 ## 为什么需要学习它
 
-生产问题通常不是某一个工具单独出错，而是多个机制互相影响：
+长期运行程序的问题通常不是某一个工具单独出错，而是多个机制互相影响：
 
 ```text
-slow downstream
+downstream 变慢
     ↓
 Queue 变长
     ↓
@@ -53,13 +55,13 @@ retry 增多
 downstream 压力更大
 ```
 
-同时，服务还必须面对 shutdown、重复 job、writer resource 上限、长期运行中的 Task lifecycle，以及“出了问题之后怎么知道”。
+同时，程序还必须面对 shutdown、重复 job、writer resource 上限、长期存在的 Task lifecycle，以及“出了问题之后怎么知道”。
 
-最后一课的目标，就是把前面已经学过的独立机制组合成一个可解释的服务模型。
+最后一课的目标，就是把前面已经学过的独立机制组合成一个可解释的整体模型。
 
 ## 核心理论
 
-### 1. 先画完整服务 pipeline
+### 1. 先画完整 pipeline
 
 ```text
 输入
@@ -70,16 +72,16 @@ bounded Queue
  ↓
 API concurrency gate + rate limiter
  ↓
-External API
+外部 API
  ↓
 writer concurrency gate
  ↓
 结果存储
 ```
 
-External API 中的 API 已在 Lesson 09 定义；这里表示“当前服务要调用的外部接口”。
+API 已在 Lesson 09 定义；这里的“外部 API”表示当前程序要调用的外部接口。
 
-这里的 gate 表示：只有满足对应 resource 限制的工作，才能进入下一段。
+Gate 表示：只有满足对应 resource 限制的工作，才能进入下一段。
 
 ### 2. Concurrency limit 与 rate limit 同时存在
 
@@ -88,7 +90,7 @@ External API 中的 API 已在 Lesson 09 定义；这里表示“当前服务要
 - concurrency limit 控制同一时刻正在进行多少调用；
 - rate limit 控制单位时间允许启动多少新调用。
 
-生产服务里常常两个都需要。
+长期运行程序里常常两个都需要。
 
 例如：
 
@@ -99,7 +101,7 @@ QPS = 10
 
 意思是：
 
-- 同一时刻最多 5 个 API attempt 在途；
+- 同一时刻最多 5 个 API attempt 正在进行；
 - 每秒最多启动 10 个新 attempt。
 
 一个限制“同时占用量”，一个限制“启动速度”。
@@ -141,11 +143,13 @@ except Exception:
 
 ```text
 transient failure   → 可能适合 retry
-明确业务错误        → 通常不 retry
+permanent failure   → 通常不 retry
 caller cancellation → 不应当 retry
 ```
 
-本课的重点不是列出所有错误类型，而是建立原则：
+这里的 **caller（调用者）** 已经是前面课程一直使用的普通角色名：谁调用当前函数，谁就是 caller。
+
+本课的原则是：
 
 > retry 必须有适用条件和次数上限。
 
@@ -153,7 +157,7 @@ caller cancellation → 不应当 retry
 
 假设第一次 attempt 实际已经完成 side effect，只是 response 在网络途中丢失。
 
-调用方看到 timeout 后 retry：
+调用者看到 timeout 后 retry：
 
 ```text
 attempt 1
@@ -174,7 +178,7 @@ attempt 2
 
 ### 6. Writer 也有 resource capacity
 
-很多系统只限制 External API，却忘了最终写入数据库或文件同样可能成为瓶颈。
+很多程序只限制外部 API，却忘了最终写入数据库或文件同样可能成为瓶颈。
 
 因此：
 
@@ -188,7 +192,7 @@ writer concurrency gate
 
 如果 writer 太慢，仍然可能导致上游 backlog 增长。
 
-所以 resource 模型要覆盖整条 pipeline，而不是只盯住网络调用。
+所以 resource 模型要覆盖整条 pipeline，而不是只盯住外部调用。
 
 ### 7. Graceful shutdown 先写业务承诺
 
@@ -205,14 +209,14 @@ worker 处理完已接收 job
     ↓
 返回最终 metrics
     ↓
-服务结束
+程序结束
 ```
 
 这就是 graceful shutdown：不是“永远不 cancellation”，而是先明确哪些工作承诺处理完、哪些工作允许停止，再按顺序收尾。
 
-有些服务可能选择立即停止剩余工作；那也是一种 shutdown 策略，但必须由业务承诺决定，而不是随手实现。
+有些程序可能选择立即停止剩余工作；那也是一种 shutdown 策略，但必须由业务承诺决定，而不是随手实现。
 
-### 8. Metrics 让系统状态可以量化
+### 8. Metrics 让程序状态可以量化
 
 最基础的 counter 可以包括：
 
@@ -224,7 +228,9 @@ retried
 duplicates
 ```
 
-例如：
+这些只是字段名，例如 `retried` 这个 counter 表示“累计发生过多少次 retry”。
+
+如果：
 
 ```text
 retried 很快上涨
@@ -260,12 +266,12 @@ event=job_retry job_id=123 attempt=2 reason=timeout
 - retry metrics 快速上涨；
 - downstream failure 同时增加；
 - Queue 中等待的 job 持续增加；
-- structured logging 中出现大量相似 retry event。
+- structured logging 中出现大量相似 retry 事件。
 
 如果出现 task leak，可以观察：
 
 - 已完成业务数量稳定，但存活 Task 数持续上升；
-- 服务准备 shutdown 时总有本应结束的 Task 残留；
+- 程序准备 shutdown 时总有本应结束的 Task 残留；
 - 某些 Task 已经没有明确 owner。
 
 Observability 的目标不是“日志越多越好”，而是：
@@ -277,8 +283,8 @@ Observability 的目标不是“日志越多越好”，而是：
 正常运行：
 
 ```text
-RUNNING
-accept input
+运行中
+接收输入
     ↓
 Queue
     ↓
@@ -288,42 +294,40 @@ API gate + rate limiter
     ↓
 writer gate
     ↓
-result stored
+结果已保存
 ```
 
 shutdown：
 
 ```text
-STOPPING
-stop new input
+停止中
+停止接收新输入
     ↓
-drain accepted work
+drain 已接收工作
     ↓
-workers end
+workers 结束
     ↓
-resources close
+resources 关闭
     ↓
-final metrics
+得到最终 metrics
     ↓
-STOPPED
+已停止
 ```
 
 失败恢复：
 
 ```text
 attempt
-  ├─ success → continue
-  ├─ transient failure → maybe retry if attempts remain
-  ├─ permanent failure → fail job
-  └─ cancellation → propagate stop
+  ├─ success           → 继续
+  ├─ transient failure → 还有次数时可以 retry
+  ├─ permanent failure → 当前 job 失败
+  └─ cancellation      → 继续向上层传播停止信号
 ```
-
-这里的 **permanent failure（持久性失败）** 第一次出现时只需要这样理解：再次立即尝试通常不会改变结果的失败，例如明确的参数错误。
 
 ## 常见误解
 
 - **误区：** QPS=10 就等于 concurrency=10。  
-  **更准确：** QPS 表达启动速率；concurrency 表达同时在途数量。
+  **更准确：** QPS 表达启动速率；concurrency 表达同时进行的数量。
 
 - **误区：** 失败就无限 retry 能提高成功率。  
   **更准确：** 这可能形成 retry storm，并放大 downstream failure。
@@ -334,14 +338,14 @@ attempt
 - **误区：** 有 `job_id` 就天然具备 idempotency。  
   **更准确：** 实现必须真的利用稳定标识避免重复 side effect。
 
-- **误区：** graceful shutdown 就是 cancellation 所有 worker。  
+- **误区：** graceful shutdown 就是对所有 worker 立刻发 cancellation。  
   **更准确：** 是否 drain 已接收工作取决于业务承诺。
 
-- **误区：** 只限制 External API concurrency 就够了。  
+- **误区：** 只限制外部 API concurrency 就够了。  
   **更准确：** writer 和其他有限 resource 同样可能成为瓶颈。
 
 - **误区：** metrics 只统计成功数即可。  
-  **更准确：** 至少还要能看到失败、retry、duplicate 和 backlog 等关键状态。
+  **更准确：** 至少还要能看到失败、retry、重复和 backlog 等关键状态。
 
 - **误区：** structured logging 就是写更多字符串。  
   **更准确：** 关键是事件名和字段结构稳定、可查询。
@@ -350,7 +354,7 @@ attempt
 
 1. 把整条 pipeline 的 resource capacity 都画出来。
 2. Concurrency limit 与 rate limit 是两个独立限制。
-3. 每个 remote attempt 都有自己的 timeout。
+3. 每个外部调用 attempt 都有自己的 timeout。
 4. Retry 只对明确适合的 failure 生效，而且次数有限。
 5. Retry 可能重复执行，所以要用 idempotency 防止重复 side effect。
 6. Writer 也有自己的 concurrency capacity。
@@ -362,7 +366,7 @@ attempt
 
 1. shutdown 与 graceful shutdown 有什么区别？
 2. attempt 与 retry 的关系是什么？
-3. transient failure 为什么可能适合 retry？
+3. transient failure 与 permanent failure 有什么区别？
 4. side effect 在本课里指什么？
 5. idempotency 为什么不能只靠“调用者不要重复发送”？
 6. QPS 与 concurrency limit 分别控制什么？
@@ -381,13 +385,15 @@ attempt
 
 先填写 `practice/DESIGN.md`，再实现 Job Processing Service。
 
-服务必须明确：
+这里的 `Job Processing Service` 是练习项目名；它表示“持续接收 job、处理并保存结果的程序”。
+
+程序必须明确：
 
 - bounded Queue；
 - 固定数量 worker；
 - API concurrency limit；
 - QPS / rate limit；
-- per-attempt timeout；
+- 每个 attempt 的 timeout；
 - 有限 retry；
 - `job_id` idempotency；
 - writer concurrency limit；
@@ -398,7 +404,7 @@ attempt
 
 测试会覆盖：
 
-- duplicate job 不重复产生 side effect；
+- 重复 job 不重复产生 side effect；
 - transient failure 只在允许条件下有限 retry；
 - 每个 attempt 有 timeout；
 - API active peak 不超过 concurrency limit；
@@ -406,7 +412,7 @@ attempt
 - writer active peak 不超过 writer limit；
 - shutdown 时已接收工作完成 drain；
 - 最终 metrics 正确；
-- 测试不依赖外部服务。
+- 测试不依赖外部系统。
 
 仓库参考实现：
 
