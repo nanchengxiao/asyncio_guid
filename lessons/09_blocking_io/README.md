@@ -11,7 +11,7 @@
 - **I/O-bound（I/O 密集型）**：总时间主要花在等待外部 I/O，而不是持续做计算。
 - **CPU-bound（计算密集型）**：总时间主要花在 CPU 持续执行计算。
 - **worker thread（工作线程）**：专门替 Event Loop thread 执行普通同步函数的另一条 thread。
-- **thread pool（线程池）**：预先管理一组 worker thread 的容器；提交的同步工作会在线程可用时执行。
+- **thread pool（线程池）**：管理一组 worker thread 的容器；提交的同步工作会在线程可用时执行。
 - **`asyncio.to_thread()`**：把一个普通同步函数交给 worker thread 执行，并让当前 Task 以异步方式等待其结果的工具。
 - **thread-safe（线程安全）**：同一个对象被多个 thread 同时使用时，内部状态仍能保持正确。
 - **API（接口）**：一个程序、库或服务对外提供的一组可调用能力。
@@ -33,7 +33,7 @@
 
 ## 为什么需要学习它
 
-真实项目经常会遇到没有 asyncio API 的旧 SDK、文件库或数据库驱动。
+真实项目经常会遇到没有 asyncio API 的旧 SDK、文件库或数据库访问库。
 
 这些库可能只能提供普通同步函数。如果 coroutine 直接调用一个会长时间等待的同步函数，这个函数会一直占住 Event Loop thread，于是其他 Task 也得不到调度机会。
 
@@ -59,13 +59,13 @@ time.sleep(1)
 
 那么这 1 秒里，当前 Event Loop thread 被同步调用占住。
 
-其他 Task 即使已经 ready，也没有机会运行。
+其他 Task 即使已经可以继续，也没有机会运行。
 
 脑内模型：
 
 ```text
 Event Loop thread:
-Task A → legacy_loader() [blocked..............] → return
+Task A → legacy_loader() [等待.................] → return
 Task B →                       无法推进
 Task C →                       无法推进
 ```
@@ -111,7 +111,7 @@ result = await asyncio.to_thread(load_sync, item)
 ```text
 很多同步调用
     ↓
-finite thread pool
+容量有限的 thread pool
     ↓
 少量 worker thread 同时执行
 ```
@@ -203,11 +203,9 @@ blocking synchronous call
 ```text
 Event Loop thread ─ await result ──→ 继续调度其他 Task
         │
-        └─ submit sync function
-                    ↓
-              worker thread
-                    ↓
-             blocking I/O
+        └─ 把同步函数交给 worker thread
+                         ↓
+                   blocking I/O
 ```
 
 ## 常见误解
@@ -267,7 +265,7 @@ Event Loop thread ─ await result ──→ 继续调度其他 Task
 
 - 运行 heartbeat，确认 blocking 调用期间仍产生 tick；
 - 记录 loader 在线程侧的 active / peak；
-- 确认峰值不超过设定限制；
+- 确认 peak 不超过设定限制；
 - 验证所有 profile 结果正确。
 
 仓库参考实现：
