@@ -1,4 +1,4 @@
 async def load_profiles(ids, blocking_loader, *, limit):
-    # TODO：调用同步阻塞 loader 时仍要让 Event Loop 保持响应；同时限制
-    # 工作线程中并发调用 blocking_loader 的数量。
+    # TODO：调用 blocking_loader 时保持事件循环可响应，
+    # 同时限制进入这个同步阻塞函数的并发调用数量。
     raise NotImplementedError

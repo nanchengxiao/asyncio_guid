@@ -1,26 +1,44 @@
 # asyncio_guid
 
-一套从 asyncio 完全新手走向生产级异步工程能力的实践课程。
+一套从 Python 异步编程入门走向生产级 asyncio 工程能力的实践课程。
 
 这不是 asyncio API 百科。课程的目标是让你面对真实业务时，先建立任务、依赖、资源和失败模型，再把模型映射为清晰、可维护、可测试的 asyncio 代码。
 
 ## 适合谁
 
-这套课程只默认你已经有**普通 Python 基础**，例如能够阅读和编写函数、类、列表/字典、异常处理和模块导入。
+你至少应该已经会普通 Python 的这些基础：
 
-**不要求你提前理解 asyncio。** 你可以不知道 coroutine、Task、Event Loop、cancellation、Semaphore、backpressure 等词；这些概念会在课程第一次正式使用时解释。
+- 变量、函数、参数与返回值；
+- `if` / `for` / `while`；
+- list / dict 等常见容器；
+- 知道异常是什么，见过 `try / except`。
+
+**不要求你预先掌握 generator、iterator、context manager，也不要求你已经会 asyncio。**
+
+- Lesson 00 会从零建立 iterator、generator、`try/finally`、context manager 与资源生命周期模型；
+- Lesson 01 才正式进入 coroutine / `await`；
+- 后续逐步进入 Task、structured concurrency、cancellation、backpressure 和生产级设计。
+
+如果你已经写过 `async def`、`await`、`create_task()`，前几课仍建议快速过一遍，因为课程重点不是记语法，而是校正执行模型。
 
 课程统一使用 **Python >= 3.11**，并优先教授 `TaskGroup`、`asyncio.timeout()` 等现代 asyncio 设计。
 
 ## 教学约定
 
-为了避免“默认你已经懂”，主课程遵守下面的规则：
+这套课程不应该靠“默认你懂”推进。
 
-1. **术语第一次进入主线时先解释，再使用。** 必要时保留英文名，方便以后查文档。
-2. **后续课程默认你已经掌握前课明确讲过的概念。** 不重复展开同一个定义。
-3. **不为了完整而提前塞概念。** 某个术语属于下一课，就尽量留到下一课再正式引入。
-4. 每课都会写出“进入本课前”应当已经掌握的内容；如果那里出现你没学过的东西，说明课程顺序或讲解需要修正。
-5. 英文工程词会尽量先给白话含义，例如“backpressure（下游处理不过来时，让上游也慢下来）”。
+每个 Lesson 应遵守下面的规则：
+
+1. 新术语第一次出现时先用直白语言解释，再给出术语名。
+2. 一个练习需要的概念，必须先在理论部分铺垫。
+3. 代码示例应尽量可直接运行；如果只是伪代码，会明确说明。
+4. 对容易混淆的执行顺序，要给时间线或逐步推演，而不只给结论。
+5. Practice 应告诉你业务目标、输入输出、约束和验收，不把“猜作者想用哪个 API”当练习。
+6. 测试优先检查行为，而不是搜索源码字符串。
+7. Reference solution 应在你自己完成并验收后再看。
+8. **面向学习者的代码注释、教学 docstring、TODO 提示统一使用中文；变量名、函数名和 Python/API 标识符保持英文。**
+
+如果你读某一课时发现“一个关键术语突然出现，但课程没有解释”，可以把它视为课程文档缺陷，而不是默认由学习者自行补齐。
 
 ## 仓库结构
 
@@ -44,6 +62,8 @@ asyncio_guid/
 ```text
 理论
   ↓
+最小实验 / 执行预测
+  ↓
 关键问题
   ↓
 场景命题
@@ -51,6 +71,8 @@ asyncio_guid/
 practice/starter.py
   ↓
 行为测试验收
+  ↓
+最后再看 reference solution
 ```
 
 默认测试验证仓库中的参考实现，因此 clone 后课程仓库本身应保持绿色；当你完成某一课的 starter 后，增加 `--learner` 即可用同一组行为测试验收自己的实现。
@@ -59,7 +81,7 @@ practice/starter.py
 
 | Stage | Lesson | 核心能力 | 实践场景 |
 |---|---|---|---|
-| 0 | 00 Python 必要基础 | 暂停、恢复、资源生命周期、finally | 流式读取与可靠关闭 |
+| 0 | 00 Python 必要基础 | iterator/generator、暂停恢复、资源生命周期、finally | 流式读取与可靠关闭 |
 | 1 | 01 Coroutine / await | coroutine function/object、真正开始执行的时机 | 订单上下文串行依赖 |
 | 2 | 02 Event Loop / Task | Task、调度、真正的并发 | Dashboard 并发取数 |
 | 3 | 03 Structured Concurrency | Task ownership、TaskGroup | 一组兄弟任务失败联动 |
@@ -81,6 +103,18 @@ uv sync
 uv run pytest -v
 ```
 
+第一次学习建议直接进入：
+
+```text
+lessons/00_python_foundation/README.md
+```
+
+Lesson 00 还提供可运行的执行顺序实验：
+
+```bash
+uv run python lessons/00_python_foundation/experiments.py
+```
+
 完成某一课练习后，例如 Lesson 06：
 
 ```bash
@@ -89,15 +123,16 @@ uv run pytest lessons/06_bounded_concurrency/tests -v --learner
 
 ## 每节课怎么学
 
-1. 先看“进入本课前”。如果其中有你完全陌生、前课也没讲过的词，先不要硬背。
-2. 阅读该 Lesson 的 `README.md`。
-3. 遇到代码先不要运行，先预测执行顺序或画时间线。
-4. 运行最小实验，核对预测。
-5. 不查资料回答“关键问题”。
-6. 阅读场景命题与 `practice/README.md`。
-7. 完成 `practice/starter.py` 中按业务目标描述的 TODO。
-8. 使用 `--learner` 跑该课测试。
-9. 最后确认自己不仅知道“怎么写”，还能解释“为什么这样设计”。
+1. 阅读该 Lesson 的 `README.md`。
+2. 遇到代码先不要运行，先预测执行顺序或画时间线。
+3. 运行该课提供的最小实验（如果有），核对预测。
+4. 不查资料回答“关键问题”；答不上时回到对应理论小节，而不是先看 solution。
+5. 阅读场景命题与 `practice/README.md`。
+6. 完成 `practice/starter.py` 中按业务目标描述的 TODO。
+7. 使用 `--learner` 跑该课测试。
+8. 根据失败行为定位自己的模型问题。
+9. 测试通过后再阅读 reference solution。
+10. 最后确认自己不仅知道“怎么写”，还能解释“为什么这样设计”。
 
 ## 两套验收
 

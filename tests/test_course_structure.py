@@ -28,7 +28,6 @@ def test_every_lesson_has_closed_learning_loop():
 def test_every_theory_readme_uses_course_template():
     headings = [
         "## 本节目标",
-        "## 进入本课前",
         "## 为什么需要学习它",
         "## 核心理论",
         "## 脑内执行模型",
@@ -42,6 +41,16 @@ def test_every_theory_readme_uses_course_template():
         text = (lesson / "README.md").read_text(encoding="utf-8")
         for heading in headings:
             assert heading in text, (lesson.name, heading)
+
+
+def test_lessons_after_foundation_declare_prerequisites():
+    for lesson in LESSONS[1:]:
+        text = (lesson / "README.md").read_text(encoding="utf-8")
+        assert "## 进入本课前" in text, lesson.name
+
+    foundation = (LESSONS[0] / "README.md").read_text(encoding="utf-8")
+    assert "不要求你预先理解" in foundation
+    assert "本课会从普通 `for` 循环开始" in foundation
 
 
 def test_course_code_comments_use_chinese():
