@@ -1,0 +1,13 @@
+[project]
+name = "asyncio-guide"
+version = "0.1.0"
+description = "Python asyncio 中文学习指南（BBC Cloudfit 系列教程翻译与示例）"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "aiohttp>=3.9",
+]
+
+[tool.uv]
+# 纯文档 + 示例脚本项目，不作为 Python 包安装。
+package = false

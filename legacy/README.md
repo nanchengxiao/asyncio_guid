@@ -1,7 +1,31 @@
-# Legacy / historical material
+# Legacy materials
 
-原仓库的五篇 BBC Cloudfit 中文翻译、合并版 Markdown/HTML、图片、旧 examples、`NOTICE.md`、`SOURCES.md` 和 `MANIFEST.json` 都是历史资料的一部分。
+这里集中存放仓库重构前的历史资料，避免旧版翻译、示例和现代课程主线混在根目录。
 
-为避免破坏已有链接和原始清单，本次重构不强行移动这些文件。课程主入口已经从“按五篇翻译顺序阅读”切换为 `lessons/`；需要追溯历史文章、旧版本 API 说明或来源时，再回到这些文件。
+## `cloudfit_translation/`
 
-现代课程推荐以 Python >= 3.11 为基线。看到 `get_event_loop().run_until_complete(...)`、手工事件循环管理、旧版本兼容分支时，应把它们理解为历史上下文，而不是今天默认的应用层设计。
+`cloudfit_translation/` 是原仓库内容的自包含归档，主要包括：
+
+```text
+cloudfit_translation/
+├── README.md
+├── 01_基础概念与模式.md
+├── 02_可等待对象_任务与Future.md
+├── 03_异步上下文管理器与异步迭代器.md
+├── 04_库支持.md
+├── 05_混合同步与异步代码.md
+├── asyncio_guide_zh.md
+├── asyncio_guide_zh.html
+├── assets/
+├── examples/
+├── NOTICE.md
+├── SOURCES.md
+├── MANIFEST.json
+├── style.css
+├── pyproject.toml
+└── uv.lock
+```
+
+这些文件用于追溯原始翻译、历史版本 API 说明、旧示例以及 attribution。除路径迁移外，归档内容本身不作为现代课程主线继续维护。
+
+现代学习请从仓库根 [`README.md`](../README.md) 和 [`lessons/`](../lessons/) 开始。需要理解旧资料如何映射到新课程时，查看 [`references/README.md`](../references/README.md)。
