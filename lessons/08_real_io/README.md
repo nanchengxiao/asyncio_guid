@@ -6,11 +6,11 @@
 
 ## 本课新增术语
 
-- **HTTP**：client 和 server 之间常用的一套 request / response 规则；client 发 request，server 回 response。
 - **client（客户端）**：主动向另一端发起 request 的一方。
 - **server（服务器）**：接收 request、执行处理并返回 response 的一方。
 - **request（请求）**：client 发给 server 的一次“请处理这件事”的消息。
 - **response（响应）**：server 对一次 request 返回的结果。
+- **HTTP**：client 和 server 之间常用的一套 request / response 规则。
 - **URL**：告诉 client“要访问哪个网络位置”的地址字符串。
 - **JSON**：一种常见文本数据格式，用对象、数组、字符串、数字等结构表示数据。
 - **GET**：HTTP request 的一种类型，通常用来获取指定 URL 的内容。
@@ -169,6 +169,8 @@ finite connection pool
 downstream
 ```
 
+这里的 `finite` 只表示“数量有限”。
+
 以后遇到其他有连接数量上限的外部系统，也可以先问：
 
 > 真正有限的连接 resource 在哪里？谁拥有它？容量是多少？
@@ -211,8 +213,8 @@ server active         → downstream 实际观察到多少正在处理的 reques
 
 ## 本节规则总结
 
-1. HTTP 是 request / response 规则；URL 表示访问地址；JSON 是常见数据格式。
-2. GET 是常见的 HTTP request 类型，用来获取 URL 对应内容。
+1. Client 发 request，server 回 response；HTTP 是双方使用的一套常见规则。
+2. URL 表示访问地址；JSON 是常见数据格式；GET 是常见的 HTTP request 类型。
 3. `ClientSession` 是需要明确关闭的 resource。
 4. 一批相关 request 通常复用同一个 Session。
 5. Connector 管理底层连接，connection pool 表达有限连接容量。
@@ -223,17 +225,18 @@ server active         → downstream 实际观察到多少正在处理的 reques
 
 ## 关键问题
 
-1. HTTP request 与 response 分别是什么？
-2. URL 和 JSON 分别表达什么？
-3. GET request 在本课里做什么？
-4. `ClientSession` 为什么是 resource？
-5. 为什么不推荐每个 request 都新建一个 `ClientSession`？
-6. connector 与 connection pool 分别负责什么？
-7. `TCPConnector(limit=4)` 的 4 表达什么容量？
-8. async context manager 与普通 context manager 的关键差别是什么？
-9. 100 个 Task + connection pool limit=4 时，真实网络 concurrency 为什么不等于 100？
-10. 为什么读取 response body 仍可能需要 `await`？
-11. 为什么课程测试使用本地 server？
+1. client 与 server 分别是什么？
+2. HTTP request 与 response 分别是什么？
+3. URL 和 JSON 分别表达什么？
+4. GET request 在本课里做什么？
+5. `ClientSession` 为什么是 resource？
+6. 为什么不推荐每个 request 都新建一个 `ClientSession`？
+7. connector 与 connection pool 分别负责什么？
+8. `TCPConnector(limit=4)` 的 4 表达什么容量？
+9. async context manager 与普通 context manager 的关键差别是什么？
+10. 100 个 Task + connection pool limit=4 时，真实网络 concurrency 为什么不等于 100？
+11. 为什么读取 response body 仍可能需要 `await`？
+12. 为什么课程测试使用本地 server？
 
 ## 场景命题
 
