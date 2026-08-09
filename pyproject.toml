@@ -1,13 +1,23 @@
 [project]
 name = "asyncio-guide"
-version = "0.1.0"
-description = "Python asyncio 中文学习指南（BBC Cloudfit 系列教程翻译与示例）"
+version = "0.2.0"
+description = "从 asyncio 初学者到生产级异步工程能力的实践课程"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 dependencies = [
     "aiohttp>=3.9",
 ]
 
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+]
+
 [tool.uv]
-# 纯文档 + 示例脚本项目，不作为 Python 包安装。
 package = false
+
+[tool.pytest.ini_options]
+addopts = "--import-mode=importlib"
+asyncio_mode = "auto"
+testpaths = ["tests", "lessons"]
