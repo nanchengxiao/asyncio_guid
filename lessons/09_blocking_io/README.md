@@ -7,9 +7,10 @@
 ## 本课新增术语
 
 - **synchronous call（同步调用）**：像普通 Python 函数调用一样，当前执行路径会一直跑到这个调用返回，期间不会自动让别的 async 工作得到执行机会。
-- **blocking I/O（阻塞式 I/O）**：synchronous call 在等待网络、磁盘、数据库等外部 I/O 时，当前 thread 仍被这个调用占住。
+- **blocking I/O（阻塞式 I/O）**：synchronous call 在等待外部 I/O 时，当前 thread 仍被这个调用占住。
 - **I/O-bound（I/O 密集型）**：总时间主要花在等待外部 I/O，而不是持续做计算。
-- **CPU-bound（计算密集型）**：总时间主要花在 CPU 持续执行计算。
+- **CPU（处理器）**：真正执行程序计算指令的硬件；本课只需要把它理解成“负责算东西的地方”。
+- **CPU-bound（计算密集型）**：总时间主要花在 CPU 持续执行计算，而不是等待外部 I/O。
 - **worker thread（工作线程）**：专门替 Event Loop thread 执行普通同步函数的另一条 thread。
 - **thread pool（线程池）**：管理一组 worker thread 的容器；提交的同步工作会在线程可用时执行。
 - **`asyncio.to_thread()`**：把一个普通同步函数交给 worker thread 执行，并让当前 Task 以 async 方式等待其结果的工具。
@@ -33,9 +34,9 @@
 
 ## 为什么需要学习它
 
-真实项目经常会遇到没有 asyncio API 的旧 SDK、文件库或数据库访问库。
+真实项目经常会遇到没有 asyncio API 的旧 SDK、文件库或其他数据访问库。
 
-这些库可能只能提供普通同步函数。如果 coroutine 直接调用一个会长时间等待的同步函数，这个函数会一直占住 Event Loop thread，于是其他 Task 也得不到调度机会。
+这些库可能只能提供普通同步函数。如果 coroutine 直接调用一个会长时间等待的同步函数，这个函数会一直占住 Event Loop thread，于是其他 Task 也得不到 scheduling 机会。
 
 问题不在于“函数是不是 `def`”，而在于：
 
@@ -79,7 +80,7 @@ result = await asyncio.to_thread(blocking_sdk_call, arg)
 这行代码做两件事：
 
 1. 把 `blocking_sdk_call(arg)` 交给 worker thread 执行；
-2. 当前 Task async 等待它的结果，所以 Event Loop thread 可以继续调度其他 Task。
+2. 当前 Task async 等待它的结果，所以 Event Loop thread 可以继续 scheduling 其他 Task。
 
 ```text
 Event Loop thread: heartbeat ─ tick ─ tick ─ tick
@@ -89,8 +90,6 @@ worker thread:                [blocking call........]
 ```
 
 ### 3. `to_thread()` 接收普通同步函数
-
-正确方向：
 
 ```python
 result = await asyncio.to_thread(load_sync, item)
@@ -106,7 +105,7 @@ result = await asyncio.to_thread(load_sync, item)
 
 如果同时提交大量同步调用，它们不会凭空获得无限 thread，而是可能在线程池里排队。
 
-所以线程侧也有资源模型：
+所以线程侧也有 resource 模型：
 
 ```text
 很多同步调用
@@ -142,7 +141,7 @@ client.load(...)
 
 - 每个 thread 使用独立 client object；
 - 把同时调用数量限制为 1；
-- 使用库官方建议的线程使用方式。
+- 使用库官方建议的 thread 使用方式。
 
 具体方案取决于旧库自己的保证。
 
@@ -201,7 +200,7 @@ blocking synchronous call
 使用 `to_thread()`：
 
 ```text
-Event Loop thread ─ await result ──→ 继续调度其他 Task
+Event Loop thread ─ await result ──→ 继续 scheduling 其他 Task
         │
         └─ 把同步函数交给 worker thread
                          ↓
@@ -240,13 +239,14 @@ Event Loop thread ─ await result ──→ 继续调度其他 Task
 1. synchronous call 在本课里是什么意思？
 2. blocking I/O 为什么会影响其他 Task？
 3. `to_thread()` 把哪部分工作移出了 Event Loop thread？
-4. worker thread 与 thread pool 分别是什么？
-5. I/O-bound 与 CPU-bound 的区别是什么？
-6. API 与 SDK 分别是什么？
-7. thread-safe 是什么意思？
-8. 为什么旧 client object 可能不能被多个 thread 同时共享？
-9. 为什么 `to_thread()` 不是 CPU-bound 的通用答案？
-10. heartbeat 为什么能帮助发现 Event Loop 被拖住？
+4. CPU 与 CPU-bound 分别是什么意思？
+5. worker thread 与 thread pool 分别是什么？
+6. I/O-bound 与 CPU-bound 的区别是什么？
+7. API 与 SDK 分别是什么？
+8. thread-safe 是什么意思？
+9. 为什么旧 client object 可能不能被多个 thread 同时共享？
+10. 为什么 `to_thread()` 不是 CPU-bound 的通用答案？
+11. heartbeat 为什么能帮助发现 Event Loop 被拖住？
 
 ## 场景命题
 
@@ -254,7 +254,7 @@ Event Loop thread ─ await result ──→ 继续调度其他 Task
 
 要求：
 
-- Event Loop 仍能调度 heartbeat；
+- Event Loop 仍能 scheduling heartbeat；
 - loader 在线程侧执行；
 - 同时调用 loader 的 worker thread 数量有明确上限；
 - 不假设 legacy client 天然 thread-safe。
