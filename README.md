@@ -1,47 +1,131 @@
-# asyncio 中文学习指南
+# asyncio_guid
 
-本压缩包根据 BBC R&D Cloudfit 团队发布的五篇 Python `asyncio` 教学页面整理并翻译，保留标题结构、示例代码、重要提示与原文链接。
+一套从 asyncio 初学者走向生产级异步工程能力的实践课程。
 
-## 文件目录
+这不是 asyncio API 百科。课程的目标是让你面对真实业务时，先建立任务、依赖、资源和失败模型，再把模型映射为清晰、可维护、可测试的 asyncio 代码。
 
-- `01_基础概念与模式.md`
-- `02_可等待对象_任务与Future.md`
-- `03_异步上下文管理器与异步迭代器.md`
-- `04_库支持.md`
-- `05_混合同步与异步代码.md`
-- `asyncio_guide_zh.md`：五篇合并版
-- `asyncio_guide_zh.html`：可离线阅读的合并版 HTML
-- `assets/SubVsCoRoutines.png`：原文第 1 篇中的子程序/协程对比图
-- `SOURCES.md`：五篇原始页面和图示资源地址
-- `NOTICE.md`：来源、翻译和许可说明
-- `MANIFEST.json`：文件清单及 SHA-256 校验值
+## 适合谁
 
-## 阅读建议
+你至少应当：
 
-按 1～5 的顺序阅读：
+- 知道 `async def` / `await` 的基本写法；
+- 使用过 `asyncio.create_task()` 或 `asyncio.gather()`；
+- 愿意从“会调用 API”进一步学习 Task 生命周期、取消、超时、背压与生产级设计。
 
-1. 先建立事件循环、任务和协程的概念模型；
-2. 理解 `async def`、`await`、Future 与 Task；
-3. 学习 `async with`、`async for` 和异步生成器；
-4. 了解 `aiohttp`、`AsyncExitStack`、`AsyncMock` 等常用支持；
-5. 掌握同步阻塞库与异步代码混用时的线程池、进程池和文件描述符接口。
+课程统一使用 **Python >= 3.11**，并优先教授 `TaskGroup`、`asyncio.timeout()` 等现代 asyncio 设计。
 
-## 版本提示
+## 学习方式
 
-原文包含 Python 3.6～3.10 时代的兼容性与生态说明。译文保留了这些历史上下文，并在少量位置增加提示。实际项目请同时查阅当前 Python 与第三方库的官方文档。
+每节课形成同一个闭环：
 
-## 运行环境（uv）
-
-使用 [uv](https://docs.astral.sh/uv/) 管理环境与依赖：
-
-```bash
-uv sync        # 创建 .venv 并安装依赖（含 aiohttp）
+```text
+理论
+  ↓
+关键问题
+  ↓
+场景命题
+  ↓
+practice/starter.py
+  ↓
+行为测试验收
 ```
 
-`examples/` 下的示例（要求 Python ≥ 3.9）均可直接运行：
+默认测试验证仓库中的参考实现，因此 clone 后课程仓库本身应保持绿色；当你完成某一课的 starter 后，增加 `--learner` 即可用同一组行为测试验收自己的实现。
+
+## 课程路线
+
+| Stage | Lesson | 核心能力 | 实践场景 |
+|---|---|---|---|
+| 0 | 00 Python 必要基础 | 暂停、恢复、资源生命周期、finally | 流式读取与可靠关闭 |
+| 1 | 01 Coroutine / await | coroutine function/object、真正开始执行的时机 | 订单上下文串行依赖 |
+| 2 | 02 Event Loop / Task | Task、调度、真正的并发 | Dashboard 并发取数 |
+| 3 | 03 Structured Concurrency | Task ownership、TaskGroup | 一组兄弟任务失败联动 |
+| 4 | 04 Cancellation | cancel、CancelledError、cleanup | 可取消的分片上传 |
+| 4 | 05 Timeout / Exception | timeout、ExceptionGroup、failure semantics | 多依赖服务调用 |
+| 5 | 06 Bounded Concurrency | Semaphore、资源容量 | 限制下游并发访问 |
+| 5 | 07 Queue / Backpressure | bounded Queue、producer/consumer | 有背压的数据流水线 |
+| 6 | 08 Real I/O | aiohttp、连接池、真实网络 I/O | 本地 HTTP 批量抓取 |
+| 6 | 09 Blocking I/O | to_thread、I/O-bound vs CPU-bound | 包装同步遗留 SDK |
+| 7 | 10 Business Modeling | 六问模型、DAG、required/optional | Async Service Aggregator |
+| 8 | 11 Production Asyncio | shutdown、retry、idempotency、rate limit、observability | Job Processing Service |
+
+更详细的 Stage → Lesson → 验收矩阵见 [`COURSE_MAP.md`](COURSE_MAP.md)。
+
+## 怎么开始
 
 ```bash
-uv run python examples/01_interleave.py
-uv run python examples/04_aiohttp_client.py   # 需要联网
-uv run python -m unittest examples/06_async_tests.py -v
+uv sync
+uv run pytest -v
+```
+
+完成某一课练习后，例如 Lesson 06：
+
+```bash
+uv run pytest lessons/06_bounded_concurrency/tests -v --learner
+```
+
+## 每节课怎么学
+
+1. 阅读该 Lesson 的 `README.md`。
+2. 遇到代码先不要运行，先预测执行顺序或画时间线。
+3. 运行最小实验，核对预测。
+4. 不查资料回答“关键问题”。
+5. 阅读场景命题与 `practice/README.md`。
+6. 完成 `practice/starter.py` 中按业务目标描述的 TODO。
+7. 使用 `--learner` 跑该课测试。
+8. 最后确认自己不仅知道“怎么写”，还能解释“为什么这样设计”。
+
+## 两套验收
+
+### 仓库健康检查
+
+```bash
+uv run pytest -v
+```
+
+这会验证课程结构与每节课的参考实现，不会因为 starter 故意留空而失败。
+
+### 学习者练习验收
+
+```bash
+uv run pytest lessons/<lesson>/tests -v --learner
+```
+
+测试尽量验证行为，而不是搜索 `asyncio.gather`、`Semaphore` 等源码字符串。
+
+## 原有中文资料如何处理
+
+仓库最初包含 BBC R&D Cloudfit asyncio 系列的五篇中文翻译整理、合并版、HTML、图片和示例。这些资料没有被删除或冒充为本课程原创内容。
+
+- 原始翻译文件继续保留在仓库根目录，作为历史资料。
+- `NOTICE.md`、`SOURCES.md`、`MANIFEST.json` 保持来源链与原始清单信息。
+- 新课程吸收其中仍然优秀的 coroutine / Task / async context manager / blocking bridge 心智模型，但以 Python 3.11+ 的现代工程实践重新组织。
+- 历史兼容性、Future 底层细节、旧事件循环手工管理等内容不再占据课程主线。
+
+详见 [`references/README.md`](references/README.md) 与 [`legacy/README.md`](legacy/README.md)。
+
+## 最终能力
+
+完成课程后，你应当能够从业务需求出发完成：
+
+```text
+识别工作单元
+  ↓
+区分 I/O 与 CPU 工作
+  ↓
+画任务依赖 DAG
+  ↓
+决定串行 / 并发
+  ↓
+明确 Task owner 与生命周期
+  ↓
+确定资源容量与并发上限
+  ↓
+设计 timeout / cancellation / exception
+  ↓
+设计 backpressure
+  ↓
+选择合适 primitive
+  ↓
+写出可维护、可测试的异步代码
 ```
