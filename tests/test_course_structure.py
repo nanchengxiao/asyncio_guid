@@ -7,6 +7,84 @@ ROOT = Path(__file__).resolve().parents[1]
 LESSONS = sorted((ROOT / "lessons").glob("[0-9][0-9]_*"))
 LEGACY = ROOT / "legacy" / "cloudfit_translation"
 CJK = re.compile(r"[\u4e00-\u9fff]")
+TERM_DEFINITION = re.compile(r"^- \*\*(.+?)\*\*：(.+)$", flags=re.MULTILINE)
+
+LESSON_HEADINGS = [
+    "## 进入本课前",
+    "## 本课新增术语",
+    "## 本节目标",
+    "## 为什么需要学习它",
+    "## 核心理论",
+    "## 脑内执行模型",
+    "## 常见误解",
+    "## 本节规则总结",
+    "## 关键问题",
+    "## 场景命题",
+    "## 验收",
+]
+
+ROOT_README_HEADINGS = [
+    "## 课程定位",
+    "## 前置要求",
+    "## 学习路线",
+    "## 运行方式",
+    "## 仓库导航",
+]
+
+NAVIGATION_ONLY_TERMS = [
+    "异步",
+    "并发",
+    "coroutine",
+    "Awaitable",
+    "`await`",
+    "Event Loop",
+    "Task",
+    "TaskGroup",
+    "structured concurrency",
+    "cancellation",
+    "CancelledError",
+    "timeout",
+    "ExceptionGroup",
+    "Semaphore",
+    "Queue",
+    "producer",
+    "consumer",
+    "upstream",
+    "downstream",
+    "backpressure",
+    "network",
+    "HTTP",
+    "JSON",
+    "aiohttp",
+    "ClientSession",
+    "connection pool",
+    "thread",
+    "thread pool",
+    "thread-safe",
+    "to_thread",
+    "API",
+    "SDK",
+    "DAG",
+    "retry",
+    "idempotency",
+    "rate limit",
+    "QPS",
+    "metrics",
+    "observability",
+    "retry storm",
+]
+
+
+def _visible_markdown_text(text: str) -> str:
+    """移除链接目标和代码块，近似得到学习者在渲染页面中看到的正文。"""
+    text = re.sub(r"```.*?```", "", text, flags=re.DOTALL)
+    text = re.sub(r"\]\([^)]*\)", "]", text)
+    return text
+
+
+def _canonical_term(label: str) -> str:
+    """从“term（中文名）”或反引号 API 标签里取出首次出现检查用名称。"""
+    return label.split("（", 1)[0].strip().strip("`")
 
 
 def test_has_twelve_lessons_covering_00_to_11():
@@ -25,32 +103,85 @@ def test_every_lesson_has_closed_learning_loop():
         assert all(path.exists() for path in required), lesson.name
 
 
-def test_every_theory_readme_uses_course_template():
-    headings = [
-        "## 本节目标",
-        "## 为什么需要学习它",
-        "## 核心理论",
-        "## 脑内执行模型",
-        "## 常见误解",
-        "## 本节规则总结",
-        "## 关键问题",
-        "## 场景命题",
-        "## 验收",
-    ]
+def test_every_theory_readme_defines_terms_before_objectives():
     for lesson in LESSONS:
         text = (lesson / "README.md").read_text(encoding="utf-8")
-        for heading in headings:
+        positions = []
+        for heading in LESSON_HEADINGS:
             assert heading in text, (lesson.name, heading)
+            positions.append(text.index(heading))
+        assert positions == sorted(positions), lesson.name
 
 
-def test_lessons_after_foundation_declare_prerequisites():
-    for lesson in LESSONS[1:]:
+def test_new_terms_do_not_appear_before_their_definition():
+    """标题、前置说明、以及更早的定义都不能提前使用本课尚未定义的新术语。"""
+    for lesson in LESSONS:
         text = (lesson / "README.md").read_text(encoding="utf-8")
-        assert "## 进入本课前" in text, lesson.name
+        terms_start = text.index("## 本课新增术语")
+        objectives_start = text.index("## 本节目标")
+        term_block = text[terms_start:objectives_start]
+        definitions = list(TERM_DEFINITION.finditer(term_block))
+        assert definitions, lesson.name
 
-    foundation = (LESSONS[0] / "README.md").read_text(encoding="utf-8")
-    assert "不要求你预先理解" in foundation
-    assert "本课会从普通 `for` 循环开始" in foundation
+        for match in definitions:
+            label, definition = match.groups()
+            canonical = _canonical_term(label)
+            assert definition.strip(), (lesson.name, label)
+
+            # 只检查足够明确的名称；单个符号或过短片段容易误中普通文本。
+            if len(canonical) < 3:
+                continue
+
+            absolute_definition_start = terms_start + match.start()
+            before_definition = text[:absolute_definition_start]
+            assert canonical not in before_definition, (lesson.name, canonical)
+
+
+def test_prerequisites_only_point_backward_in_course():
+    """结构层面保证每课先声明前置，再声明本课新术语。"""
+    for lesson in LESSONS:
+        text = (lesson / "README.md").read_text(encoding="utf-8")
+        prereq = text.index("## 进入本课前")
+        terms = text.index("## 本课新增术语")
+        objectives = text.index("## 本节目标")
+        assert prereq < terms < objectives, lesson.name
+
+
+def test_root_readme_is_only_project_entrypoint():
+    text = (ROOT / "README.md").read_text(encoding="utf-8")
+    headings = re.findall(r"^## .+$", text, flags=re.MULTILINE)
+    assert headings == ROOT_README_HEADINGS
+
+    forbidden_content = [
+        "教学约定",
+        "教学规范",
+        "每节课怎么学",
+        "两套验收",
+        "优化说明",
+        "最终能力",
+        "本轮",
+        "重构过程",
+        "第一次进入主线",
+        "本课新增术语",
+    ]
+    assert all(item not in text for item in forbidden_content)
+
+
+def test_navigation_docs_do_not_preteach_course_terms():
+    for path in [ROOT / "README.md", ROOT / "COURSE_MAP.md"]:
+        visible = _visible_markdown_text(path.read_text(encoding="utf-8"))
+        for term in NAVIGATION_ONLY_TERMS:
+            assert term not in visible, (path.name, term)
+
+
+def test_authoring_contract_records_first_use_rule():
+    text = (ROOT / "AUTHORING.md").read_text(encoding="utf-8")
+    assert "普通 Python 基础" in text
+    assert "第一次进入主线" in text
+    assert "必须先用一句白话" in text
+    assert "本课新增术语" in text
+    assert "根 README" in text
+    assert "不记录教学规范" in text
 
 
 def test_course_code_comments_use_chinese():

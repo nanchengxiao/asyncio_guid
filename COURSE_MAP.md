@@ -1,79 +1,20 @@
 # Course Map
 
-## Stage 0 — Python 必要基础
+按 Lesson 00 → 11 顺序学习即可。这里仅列出每一课要解决的问题。
 
-### Lesson 00：Python foundation
-**一句话目标：** 用 generator / context manager / `finally` 建立“暂停、恢复、资源生命周期”的前置模型。  
-**实践：** 实现一个流式记录读取器，消费提前结束时也必须关闭资源。  
-**验收：** 数据顺序正确；提前退出仍执行 cleanup。
+| Stage | Lesson | 这一课解决的问题 |
+|---|---|---|
+| 0 | [Lesson 00](lessons/00_python_foundation/README.md) | 普通 Python 里，怎样逐项读取、暂停后继续，并在提前结束时可靠收尾 |
+| 1 | [Lesson 01](lessons/01_coroutine_and_await/README.md) | 为什么调用一份工作后，它的代码可能还没有真正开始执行 |
+| 2 | [Lesson 02](lessons/02_event_loop_and_task/README.md) | 一份工作等待时，怎样让另一份彼此独立的工作继续推进 |
+| 3 | [Lesson 03](lessons/03_structured_concurrency/README.md) | 一组子工作由谁负责，以及父工作结束前怎样确保它们都已结束 |
+| 4 | [Lesson 04](lessons/04_cancellation/README.md) | 上层要求停止工作时，代码怎样响应并可靠收尾 |
+| 4 | [Lesson 05](lessons/05_timeout_and_errors/README.md) | 等待太久、普通失败和上层停止要求，分别应该怎样影响业务结果 |
+| 5 | [Lesson 06](lessons/06_bounded_concurrency/README.md) | 输入很多时，怎样限制同一时刻真正占用有限东西的工作数量 |
+| 5 | [Lesson 07](lessons/07_queue_and_backpressure/README.md) | 处理不过来时，怎样限制等待量并让产生工作的一侧自动放慢 |
+| 6 | [Lesson 08](lessons/08_real_io/README.md) | 程序真正与另一端交换数据时，怎样把有限容量也纳入设计 |
+| 6 | [Lesson 09](lessons/09_blocking_io/README.md) | 一个普通函数长时间等待时，怎样避免其他工作也被迫停住 |
+| 7 | [Lesson 10](lessons/10_business_modeling/README.md) | 多个业务步骤谁依赖谁，哪些步骤最早什么时候能开始 |
+| 8 | [Lesson 11](lessons/11_production_asyncio/README.md) | 长期运行程序怎样停止、恢复失败、避免重复处理并记录运行情况 |
 
-## Stage 1 — Coroutine / await
-
-### Lesson 01：Coroutine and await
-**一句话目标：** 看到 `foo()`、`await foo()` 时能判断 coroutine 何时真正开始执行。  
-**实践：** 构建订单上下文，保持真实数据依赖，不制造虚假并发。  
-**验收：** 调用顺序符合依赖；仅创建 coroutine object 不执行函数体。
-
-## Stage 2 — Event Loop / Task / 并发
-
-### Lesson 02：Event loop and Task
-**一句话目标：** 理解并发来自多个同时存活的 Task，而不是 `await` 本身。  
-**实践：** 并发获取 dashboard 的 user 与 orders。  
-**验收：** 正确性 + 受控延迟下显著快于串行基线。
-
-## Stage 3 — Task 生命周期与 Structured Concurrency
-
-### Lesson 03：Structured concurrency
-**一句话目标：** 对每个 Task 都能回答“谁拥有、谁等待、谁取消、谁处理异常”。  
-**实践：** 用一个父作用域管理兄弟任务，并在其中一个失败时取消其余任务。  
-**验收：** 失败传播；sibling 收到取消；cleanup 执行；无 orphan task。
-
-## Stage 4 — Timeout / Cancellation / Exception
-
-### Lesson 04：Cancellation
-**一句话目标：** 把 cancellation 当作正常控制流，并用 `finally` 保证清理。  
-**实践：** 可取消的分片上传。  
-**验收：** `cancel()` 后清理发生且 `CancelledError` 继续传播。
-
-### Lesson 05：Timeout and errors
-**一句话目标：** 为异步业务调用显式设计 success / exception / timeout / cancellation 四种结果。  
-**实践：** 调用多个 required/optional 下游，并分类 TaskGroup 的并行失败。  
-**验收：** timeout 生效；required 失败传播；`ExceptionGroup` 可分类。
-
-## Stage 5 — Semaphore / Queue / Backpressure
-
-### Lesson 06：Bounded concurrency
-**一句话目标：** 区分“任务数量”和“资源允许同时访问的数量”。  
-**实践：** 大批请求通过有限容量的下游资源。  
-**验收：** 全部结果正确；峰值 active 从不超过 limit；仍保留并发。
-
-### Lesson 07：Queue and backpressure
-**一句话目标：** 让下游处理不过来的压力通过 bounded Queue 自然传回 producer。  
-**实践：** producer → bounded queue → consumers 流水线。  
-**验收：** 无丢失；producer 不能无限领先；worker 可干净退出。
-
-## Stage 6 — 真实 I/O 与同步桥接
-
-### Lesson 08：Real async I/O
-**一句话目标：** 把 HTTP 连接池视为真实资源容量，而不是把网络调用当成 `sleep()`。  
-**实践：** 使用 aiohttp 访问本地测试服务器并限制连接池。  
-**验收：** 不依赖公网；响应正确；服务器观测到的峰值并发受连接池限制。
-
-### Lesson 09：Blocking I/O
-**一句话目标：** 判断阻塞同步 I/O 何时会卡住事件循环，并用 `asyncio.to_thread()` 桥接。  
-**实践：** 包装同步 legacy SDK。  
-**验收：** heartbeat 在阻塞调用期间仍推进；线程侧并发受控。
-
-## Stage 7 — 业务异步建模
-
-### Lesson 10：Business modeling
-**一句话目标：** 先回答六问、画 DAG，再决定 Task 与并发结构。  
-**实践：** Async Service Aggregator。  
-**验收：** 第一层依赖并发；第二层按 DAG 启动；optional failure 被隔离；required failure 传播。
-
-## Stage 8 — 生产级 asyncio
-
-### Lesson 11：Production asyncio
-**一句话目标：** 把生命周期、资源容量、速率、失败恢复与可观测性组合成一个可解释的服务。  
-**实践：** Job Processing Service。  
-**验收：** bounded queue、API concurrency、rate limit、timeout、有限 retry、idempotency、有限 writer 容量、graceful drain、metrics/logging。
+每课的验收命令写在对应 Lesson 的 `README.md` 末尾。

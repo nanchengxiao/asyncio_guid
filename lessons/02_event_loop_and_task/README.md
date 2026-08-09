@@ -1,35 +1,69 @@
-# Lesson 02 — Event Loop and Task
+# Lesson 02 — 让多份 async 工作交替推进
+
+## 进入本课前
+
+你已经学过 coroutine、Awaitable、`await`，以及 data dependency。
+
+## 本课新增术语
+
+- **Event Loop（事件循环）**：asyncio 的调度中心，负责让当前可以继续的 async 工作轮流向前执行。
+- **Task（任务）**：被 Event Loop 正式登记、拥有自己执行进度的一份 coroutine 工作。
+- **scheduling（调度）**：决定接下来让哪一个当前可以继续的 Task 向前执行。
+- **concurrency（并发）**：多份工作在同一段时间内都处于进行状态；一份工作等待时，另一份可以推进。
+- **I/O（输入/输出）**：程序需要从外部取得数据或把数据交出去的操作；这类操作常常包含等待，例如读取文件。
+- **thread（线程）**：程序的一条执行路径；本课只需要知道 Event Loop 通常在一条 thread 里运行。
+- **`asyncio.create_task()`**：把 coroutine object 包装成 Task，并交给当前 Event Loop 管理的工具。
+- **`asyncio.run()`**：在程序最外层创建并运行 Event Loop，让指定的 async 入口一直执行到结束的工具。
 
 ## 本节目标
 
 学完本节，你应该能够：
 
-- 解释 Event Loop 和 Task 分别负责什么
-- 说明并发为什么来自多个同时存活的 Task
-- 预测 `create_task()` 后的基本执行时间线
-- 识别可以并发的独立 I/O
-
-## 进入本课前
-
-你已经学过 coroutine、Awaitable、`await`，以及“数据依赖必须按顺序满足”。
-
-这一课第一次正式引入 **Event Loop、Task、调度和并发**。
+- 解释 Event Loop 和 Task 分别负责什么；
+- 说明 concurrency 为什么来自多个同时存活的 Task；
+- 预测 `create_task()` 后的基本执行时间线；
+- 识别可以 concurrency 的独立 I/O；
+- 解释为什么 `await` 数量本身不能证明多份等待已经重叠。
 
 ## 为什么需要学习它
 
-前一课知道 coroutine 可以暂停，但还没有回答：**它暂停以后，程序为什么还能去做别的事情？** 这就是 Event Loop 和 Task 要解决的问题。
+前一课知道 coroutine 可以暂停，但还没有回答：
+
+> 它暂停以后，程序为什么还能去做别的事情？
+
+Event Loop 和 Task 就是这个问题的核心。
+
+如果不理解这两个对象，很容易把“写了多个 `await`”误以为“等待已经重叠”。
 
 ## 核心理论
 
-先认识几个词：
+### 1. Coroutine object 还不是独立 Task
 
-- **Event Loop（事件循环）**：asyncio 的调度中心，负责让当前可以继续的异步工作轮流向前执行。
-- **Task（任务）**：被 Event Loop 正式登记、拥有自己执行进度的一份 coroutine 工作。
-- **调度（scheduling）**：决定接下来让哪一个可以继续的 Task 向前执行。
-- **并发（concurrency）**：多份工作在同一段时间内都处于进行状态；一份工作等待时，另一份可以推进。
-- **I/O（Input/Output）**：网络、数据库、文件等输入/输出操作，通常包含等待外部结果的时间。
+```python
+user_coro = fetch_user()
+orders_coro = fetch_orders()
+```
 
-Event Loop 通常运行在一个 **thread（线程）** 中。这里先把线程理解成“程序的一条执行路径”即可，本课不展开多线程。
+这里得到两个 coroutine object，但并不能仅凭这两行判断它们会 concurrency 推进。
+
+要让它们成为两份可以被 Event Loop 分别 scheduling 的工作，可以创建 Task：
+
+```python
+user_task = asyncio.create_task(fetch_user())
+orders_task = asyncio.create_task(fetch_orders())
+```
+
+关系可以先记成：
+
+```text
+coroutine object
+      ↓ create_task(...)
+Task
+      ↓ 由它 scheduling
+Event Loop
+```
+
+### 2. 多个 Task 才给 Event Loop 多个独立推进对象
 
 ```python
 user_task = asyncio.create_task(fetch_user())
@@ -39,27 +73,68 @@ user = await user_task
 orders = await orders_task
 ```
 
-`create_task()` 会把 coroutine 包装成 Task，并登记给正在运行的 Event Loop。
+假设两个调用各自都需要等待约 100ms，而且彼此没有 data dependency。
 
-```text
-coroutine object
-      ↓ create_task(...)
-Task
-      ↓ 由它调度
-Event Loop
-```
+两个 Task 都已经存在时，一个 Task 进入 I/O 等待，Event Loop 就可以推进另一个 Task。这样两段等待时间可以重叠，总耗时可能接近 100ms，而不是约 200ms。
 
-如果 `fetch_user()` 和 `fetch_orders()` 各自等待约 100ms，而且彼此没有依赖，那么两个 Task 的等待可以重叠，总时间可能接近 100ms，而不是约 200ms。
+### 3. `create_task()` 不会立刻中断当前代码
 
-注意：`create_task()` 不会强行打断当前代码。当前 Task 要先走到能够让出执行机会的位置，新 Task 才有机会运行。
+创建 Task 后，新 Task 已经登记给 Event Loop，但当前正在执行的代码不会因为这一行立刻停下来。
 
-应用程序通常只在最外层使用：
+当前 Task 需要先走到一个能够暂停或结束的位置，Event Loop 才有机会安排其他 Task 向前执行。
+
+所以：
 
 ```python
+asyncio.create_task(do_work())
+print("current continues")
+```
+
+不能机械背成“`do_work()` 一定在 `print` 之前开始”。要看当前代码什么时候把执行机会交回 Event Loop。
+
+### 4. 两个连续 `await` 仍可能完全按顺序
+
+```python
+user = await fetch_user()
+orders = await fetch_orders()
+```
+
+这里第二个调用只有在第一个 `await` 完成后才开始。
+
+```text
+fetch_user  ─ wait ─ done
+                    ↓
+fetch_orders       ─ wait ─ done
+```
+
+这仍然是顺序等待。
+
+### 5. `asyncio.run()` 负责最外层入口
+
+应用程序通常在最外层写：
+
+```python
+async def main():
+    ...
+
 asyncio.run(main())
 ```
 
-可以先把它理解成“创建并运行 Event Loop，让 `main()` 跑到结束，然后做收尾并关闭 Event Loop”。
+可以先把它理解成：
+
+```text
+创建 Event Loop
+      ↓
+运行 main()
+      ↓
+不断 scheduling Task
+      ↓
+main() 结束
+      ↓
+做收尾并关闭 Event Loop
+```
+
+业务函数内部通常不需要自己反复创建新的 Event Loop。
 
 ## 脑内执行模型
 
@@ -70,38 +145,61 @@ orders Task:                  └─ run ─ wait I/O .... finish
                            时间 →
 ```
 
-关键不是代码里有几个 `await`，而是**同一时间是否存在多个可独立推进的 Task**。
+图里的 `run / wait / finish` 只是“执行 / 等待 / 结束”的短标签，不是新的机制。
+
+关键问题不是“代码里有几个 `await`”，而是：
+
+> 同一时间是否存在多个可以被 Event Loop 分别推进的 Task？
 
 ## 常见误解
 
-- **误区：** Task 就是线程。Task 是 asyncio 的异步工作单位；多个 Task 通常仍在同一个 Event Loop 线程中合作式运行。
-- **误区：** `create_task()` 一调用，新 Task 就立刻抢占当前代码。当前工作要先让出执行机会。
-- **误区：** 两个连续 `await` 就是并发。如果第二个调用直到第一个结束后才开始，通常仍是串行。
-- **误区：** Event Loop 能自动打断长时间计算。它不能强行抢占一直运行的普通 Python 代码。
+- **误区：** Task 就是 thread。  
+  **更准确：** Task 是 asyncio 的工作单位；多个 Task 通常仍由同一条 Event Loop thread 轮流推进。
+
+- **误区：** `create_task()` 一调用，新 Task 就立刻中断当前代码。  
+  **更准确：** 当前工作要先把执行机会交回 Event Loop。
+
+- **误区：** 两个连续 `await` 就是 concurrency。  
+  **更准确：** 如果第二个调用直到第一个完成后才开始，仍然是顺序等待。
+
+- **误区：** Event Loop 能自动打断长时间运行的普通 Python 代码。  
+  **更准确：** 一段一直不暂停的普通 Python 代码会持续占着当前 thread。
+
+- **误区：** concurrency 越多越好。  
+  **更准确：** 本课只建立执行模型；资源容量会在后面的课程专门处理。
 
 ## 本节规则总结
 
-1. Event Loop 负责调度。
-2. Task 是可被独立调度的 coroutine 工作。
-3. 多个同时存活的 Task 才形成 asyncio 的并发结构。
-4. 并发的主要收益来自重叠等待时间。
-5. 只并发彼此无数据依赖、且并发确有收益的工作。
+1. Event Loop 负责 scheduling。
+2. Task 是可以被独立 scheduling 的 coroutine 工作。
+3. 多个同时存活的 Task 才形成 asyncio 的 concurrency 结构。
+4. Concurrency 的主要收益来自重叠等待时间。
+5. `create_task()` 创建独立 Task，但不会立刻中断当前代码。
+6. 先判断 data dependency，再决定哪些工作值得同时开始。
 
 ## 关键问题
 
 1. coroutine object 与 Task 最大的区别是什么？
 2. Event Loop 的核心职责是什么？
-3. 为什么 `await fetch_user(); await fetch_orders()` 通常是串行？
-4. `create_task()` 后，新 Task 最早什么时候有机会运行？
-5. 为什么 Event Loop 不能解决一个长时间不让出的纯 Python 计算？
+3. concurrency 在本课中的白话含义是什么？
+4. 为什么 `await fetch_user(); await fetch_orders()` 通常仍是顺序等待？
+5. `create_task()` 后，新 Task 最早什么时候有机会真正运行？
+6. 为什么 Event Loop 不能解决一段长时间不暂停的普通 Python 计算？
 
 ## 场景命题
 
-Dashboard 同时需要 user 与 orders。它们只依赖同一个 `user_id`，彼此没有数据依赖。把不必要的串行等待改成真正并发。
+一个页面同时需要 user 与 orders。两份数据只共享同一个 `user_id`，彼此没有 data dependency。
+
+请把不必要的顺序等待改成真正 concurrency，并保证函数返回前自己创建的两份工作都已经结束。
 
 ## 验收
 
-测试会使用可控延迟验证结果正确，并确认两个等待确实发生重叠。
+测试会使用可控等待时间验证：
+
+- user 与 orders 结果正确；
+- 两段等待确实发生重叠；
+- 总耗时明显低于顺序等待；
+- 函数返回时没有遗留本场景创建的工作。
 
 仓库参考实现：
 
