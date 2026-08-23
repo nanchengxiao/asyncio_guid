@@ -153,19 +153,11 @@ orders Task:                  └─ run ─ wait I/O .... finish
 
 ## 常见误解
 
-- **误区：** Task 就是 thread。  
-  **更准确：** Task 是 asyncio 的工作单位；多个 Task 通常仍由同一条 Event Loop thread 轮流推进。
-
-- **误区：** `create_task()` 一调用，新 Task 就立刻中断当前代码。  
-  **更准确：** 当前工作要先把执行机会交回 Event Loop。
-
-- **误区：** 两个连续 `await` 就是 concurrency。  
-  **更准确：** 如果第二个调用直到第一个完成后才开始，仍然是顺序等待。
-
-- **误区：** Event Loop 能自动打断长时间运行的普通 Python 代码。  
-  **更准确：** 一段一直不暂停的普通 Python 代码会持续占着当前 thread。
-
-- **误区：** concurrency 越多越好。  
+- **误区：** Task 就是 thread。**更准确：** Task 是 asyncio 的工作单位；多个 Task 通常仍由同一条 Event Loop thread 轮流推进。
+- **误区：** `create_task()` 一调用，新 Task 就立刻中断当前代码。**更准确：** 当前工作要先把执行机会交回 Event Loop。
+- **误区：** 两个连续 `await` 就是 concurrency。**更准确：** 如果第二个调用直到第一个完成后才开始，仍然是顺序等待。
+- **误区：** Event Loop 能自动打断长时间运行的普通 Python 代码。**更准确：** 一段一直不暂停的普通 Python 代码会持续占着当前 thread。
+- **误区：** concurrency 越多越好。
   **更准确：** 本课只建立执行模型；资源容量会在后面的课程专门处理。
 
 ## 本节规则总结
@@ -179,12 +171,12 @@ orders Task:                  └─ run ─ wait I/O .... finish
 
 ## 关键问题
 
-1. coroutine object 与 Task 最大的区别是什么？
-2. Event Loop 的核心职责是什么？
-3. concurrency 在本课中的白话含义是什么？
-4. 为什么 `await fetch_user(); await fetch_orders()` 通常仍是顺序等待？
-5. `create_task()` 后，新 Task 最早什么时候有机会真正运行？
-6. 为什么 Event Loop 不能解决一段长时间不暂停的普通 Python 计算？
+1. coroutine object 与 Task 最大的区别是什么？  协程对象被creat_task() 包裹后才是一个Task，事件循环才能知道：哦！这个对象现在可以被我调度！
+2. Event Loop 的核心职责是什么？  调度Task
+3. concurrency 在本课中的白话含义是什么？  并发，其实就是让一些Task运行到需要等待的时候，事件循环可以调度其他Task，尽量让不同Task能重叠等待时间。
+4. 为什么 `await fetch_user(); await fetch_orders()` 通常仍是顺序等待？  因为数据依赖，`fetch_orders`得拿到`fetch_user`返回的数据才能真正开始，不然交不出去调度，事件循环到这里就会卡住，所以跟串行没啥区别。
+5. `create_task()` 后，新 Task 最早什么时候有机会真正运行？  代码执行顺序按行，执行到这行：asynio.run(那个Task)时.
+6. 为什么 Event Loop 不能解决一段长时间不暂停的普通 Python 计算？  这时这个“普通 Python 计算” 自己占用一个线程。Event Loop 自己是另外一个线程。
 
 ## 场景命题
 

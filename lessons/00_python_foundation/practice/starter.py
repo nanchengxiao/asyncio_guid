@@ -19,8 +19,8 @@ def managed_records(records, close_resource):
         #                                  ^^^^^^
         #
         # 请把 None 替换为“调用方应该按需逐条读取”的对象。
-        yield None
+        yield iterator
     finally:
         # TODO 2：
         # 在退出 with 上下文时调用清理函数，并且只调用一次。
-        pass
+        close_resource()
