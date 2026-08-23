@@ -6,20 +6,30 @@
 
 这一课不会假设你已经理解下面出现的任何新词。
 
+本课信息量较大，建议分两遍学习。第一遍只抓住一条主线：数据按需产生，调用方只读取一条就离开，关闭动作仍然可靠执行。先运行 `case.py` 并能复述这条时间线，再回到“核心理论”补齐每一种对象和语法的名字。已经熟悉本课内容的学习者，可以运行示例、回答“关键问题”后直接进入 Lesson 01。
+
 ## 本课新增术语
 
-先把本课会用到的词翻译成人话。后面的正文会直接复用这些定义。
+本课要补齐三组普通 Python 积木。词看起来不少，不需要现在背诵；先知道它们分别位于“逐项读取”“暂停后继续”“resource 收尾”哪一层，紧接着再全部对到同一个例子上。
+
+**第一组：逐项读取**
 
 - **iterable（可迭代对象）**：一份“可以开始逐项读取”的数据，例如 list、tuple、字符串。
 - **iterator（迭代器）**：一次具体的逐项读取过程；它自己记得“已经读到哪里”。
 - **`iter(...)`**：根据一个 iterable 创建一次 iterator。
 - **`next(...)`**：向 iterator 请求下一项，并让它把当前位置向前推进一步。
 - **`StopIteration`**：iterator 已经没有下一项时，用来告诉调用方“遍历结束了”的信号。
+
+**第二组：暂停后继续与按需读取**
+
 - **`yield`**：先把一个值交给调用方，同时把当前执行位置保留下来，下一次再从这里继续。
 - **generator（生成器）**：一种可以在 `yield` 处交出一个值并暂停、以后再从原位置继续的 iterator。
 - **generator function（生成器函数）**：函数体中使用了 `yield` 的函数；调用它时通常不会立刻跑完整个函数体。
 - **generator object（生成器对象）**：调用 generator function 后得到的 iterator；它保存暂停位置，之后可以继续。
 - **lazy（按需/惰性处理）**：需要一个元素时才产生或读取一个，不提前把后面的全部数据准备好。
+
+**第三组：resource 使用边界与收尾**
+
 - **resource（资源）**：用完后需要明确关闭、释放或归还的东西，例如打开的文件或数据源。
 - **cleanup（清理/收尾）**：关闭、释放、归还 resource 这类必须做的动作。
 - **`finally`**：离开对应 `try` 范围前一定会执行的收尾代码块。
@@ -30,6 +40,84 @@
 - **callback（回调函数）**：把一个函数当作值传进去，等到需要时再调用它。
 - **stream（流）**：这里先理解成“可以一条一条取得的数据来源”，不表示某个特殊 Python 类型。
 - **`@contextmanager`**：把一个只 `yield` 一次的 generator function 包装成可用于 `with` 的 context manager 的标准库工具。
+
+## 一个例子串起全部术语
+
+上面的词很多，但它们可以落在同一件事上：调用方只读取一条记录就提前离开，数据源仍然必须可靠收尾。下面这段代码就是本课的 `case.py`：
+
+```python
+from contextlib import contextmanager
+
+def source():
+    """generator function：按需产生数据，请求一条才读取一条。"""
+    for number in (1, 2, 3):
+        print(f"produce {number}")
+        yield number
+
+def close_resource():
+    """resource 的收尾动作，稍后作为 callback 传给 context manager。"""
+    print("closed：resource 收尾")
+
+@contextmanager
+def managed_records(records, cleanup_callback):
+    try:
+        yield iter(records)      # yield 前：进入阶段；yield 后：退出阶段
+    finally:
+        cleanup_callback()       # 无论正常结束还是抛异常，离开 with 都会收尾
+
+def main():
+    records_generator = source()
+    # 调用 source() 只是创建 generator object，函数体还没有运行
+    with managed_records(records_generator, close_resource) as records:
+        first = next(records)    # lazy：需要 1 条，只读取 1 条
+        print(f"got {first}")
+        # 不要在这里 list(records)：那会立即把剩余内容全部读完
+    # 离开 with 后，close_resource() 已经执行
+
+main()
+```
+
+真实输出：
+
+```text
+produce 1
+got 1
+closed：resource 收尾
+```
+
+把本课知识点对到代码上：
+
+| 术语或知识点 | 在这个例子里指什么 |
+| --- | --- |
+| **iterable** | `source()` 内部的 `(1, 2, 3)` 可以开始逐项读取 |
+| **iterator** | `records_generator` 是一次具体读取过程；`records` 指向由 `iter(records)` 得到的 iterator |
+| **`iter(...)`** | `yield iter(records)` 取得本次读取使用的 iterator；generator object 本身已经是 iterator，所以这里仍得到它自己 |
+| **`next(...)`** | `next(records)` 只请求下一项，并把读取位置推进一步 |
+| **`StopIteration`** | 本例只读取第一项，没有走到结束；如果继续请求到第三项之后，它会用这个信号表示没有下一项 |
+| **`yield`** | `source()` 中交出一条数据并保存读取位置；`managed_records()` 中分隔进入与退出阶段 |
+| **generator** | `source()` 创建的逐项读取过程，能够在每次 `yield` 后暂停并继续 |
+| **generator function** | `source` 直接是 generator function；`managed_records` 的原始函数体也使用 `yield`，随后由 `@contextmanager` 包装 |
+| **generator object** | `records_generator = source()` 得到的对象；创建时 `produce 1` 还没有执行 |
+| **lazy** | 代码只调用一次 `next(records)`，所以只出现 `produce 1`，不会提前产生 2 和 3 |
+| **resource** | 例子用数据源代表一项需要在使用结束后关闭的东西 |
+| **cleanup** | `close_resource()` 打印 `closed`，代表真正的关闭或释放动作 |
+| **`finally`** | 保证控制流离开 `with` 时一定调用 `close_resource()` |
+| **`with`** | `with managed_records(...)` 明确数据源的使用范围 |
+| **context manager** | `managed_records(...)` 返回的对象负责进入、交出 `records`，以及退出时收尾 |
+| **`__enter__()` / `__exit__()`** | 由 `@contextmanager` 生成的对象提供，`with` 在进入和退出时隐式调用；业务代码不需要手写 |
+| **callback** | `close_resource` 作为函数值传入并绑定到 `cleanup_callback`，到退出阶段才被调用 |
+| **stream** | `source()` 表示可以一条一条取得的数据来源 |
+| **`@contextmanager`** | 把 `managed_records()` 这个只交出一次值的 generator function 包装成 context manager |
+
+按时间线读输出：
+
+1. `main()` 调用 `source()`，只创建 generator object，`source()` 函数体还没有执行。
+2. 进入 `with` 时，`managed_records()` 运行到自己的 `yield`，把 iterator 绑定给 `records`。
+3. `next(records)` 第一次推进 `source()`，所以先打印 `produce 1`。
+4. `source()` 在 `yield number` 暂停并交出 `1`，随后打印 `got 1`。
+5. 代码没有再次调用 `next()`，所以 2 和 3 都没有被提前产生。
+6. 离开 `with` 时，`managed_records()` 从自己的 `yield` 后恢复并进入 `finally`。
+7. `finally` 调用 callback，于是打印 `closed：resource 收尾`；即使只读取一项，cleanup 也没有丢失。
 
 ## 本节目标
 
@@ -74,19 +162,19 @@ for number in numbers:
 
 ```python
 numbers = [10, 20, 30]
-it = iter(numbers)
+number_iterator = iter(numbers)
 
-print(next(it))  # 10
-print(next(it))  # 20
-print(next(it))  # 30
+print(next(number_iterator))  # 10
+print(next(number_iterator))  # 20
+print(next(number_iterator))  # 30
 ```
 
-`numbers` 是 iterable；`it` 是一次具体的 iterator。
+`numbers` 是 iterable；`number_iterator` 是一次具体的 iterator。
 
 再调用一次：
 
 ```python
-next(it)
+next(number_iterator)
 ```
 
 会得到 `StopIteration`，表示没有下一项了。
@@ -96,20 +184,20 @@ next(it)
 ```python
 numbers = [10, 20, 30]
 
-a = iter(numbers)
-b = iter(numbers)
+first_iterator = iter(numbers)
+second_iterator = iter(numbers)
 
-print(next(a))  # 10
-print(next(a))  # 20
-print(next(b))  # 10
+print(next(first_iterator))   # 10
+print(next(first_iterator))   # 20
+print(next(second_iterator))  # 10
 ```
 
 可以把它想成：
 
 ```text
 numbers
-├─ iterator a：已经走到第二项
-└─ iterator b：只走到第一项
+├─ first_iterator：已经走到第二项
+└─ second_iterator：只走到第一项
 ```
 
 ### 3. `for` 大致帮你做了什么
@@ -122,11 +210,11 @@ for number in numbers:
 ```
 
 ```python
-it = iter(numbers)
+number_iterator = iter(numbers)
 
 while True:
     try:
-        number = next(it)
+        number = next(number_iterator)
     except StopIteration:
         break
 
@@ -155,7 +243,7 @@ def count_two():
 函数体里有 `yield`，所以 `count_two` 是 generator function。
 
 ```python
-g = count_two()
+counter_generator = count_two()
 ```
 
 这一行通常**不会打印 `A`**。它只是创建 generator object。
@@ -170,7 +258,7 @@ count_two()     → generator object
 第一次：
 
 ```python
-value = next(g)
+value = next(counter_generator)
 ```
 
 执行过程：
@@ -182,31 +270,31 @@ print("A")
     ↓
 yield 1
     ↓
-把 1 交给 next(g)
+把 1 交给 next(counter_generator)
     ↓
 暂停
 ```
 
-第二次 `next(g)` 会从上次 `yield` 后面继续，而不是从函数第一行重来。
+第二次 `next(counter_generator)` 会从上次 `yield` 后面继续，而不是从函数第一行重来。
 
 完整时间线：
 
 ```text
-g = count_two()
+counter_generator = count_two()
 └─ 只创建对象，函数体还没运行
 
-next(g)
+next(counter_generator)
 ├─ print A
 ├─ yield 1
 └─ 暂停
 
-next(g)
+next(counter_generator)
 ├─ 从上次位置恢复
 ├─ print B
 ├─ yield 2
 └─ 再次暂停
 
-next(g)
+next(counter_generator)
 ├─ 从上次位置恢复
 ├─ print C
 └─ StopIteration
@@ -248,8 +336,8 @@ def source():
     yield 3
 
 
-g = source()
-first = next(g)
+records_generator = source()
+first = next(records_generator)
 ```
 
 此时只应该看到：
@@ -273,17 +361,17 @@ produce 1
 Resource 不是特殊 Python 类型。只要“用完后必须关闭、释放或归还”，就应该明确谁负责 cleanup。
 
 ```python
-f = open("data.txt")
-text = f.read()
-f.close()
+file = open("data.txt")
+text = file.read()
+file.close()
 ```
 
 如果中间抛异常：
 
 ```python
-f = open("data.txt")
-text = risky_read(f)  # 这里失败
-f.close()             # 这一行不会执行
+file = open("data.txt")
+text = risky_read(file)  # 这里失败
+file.close()             # 这一行不会执行
 ```
 
 Resource 就可能没有被关闭。
@@ -326,8 +414,8 @@ def source():
         print("source cleanup")
 
 
-g = source()
-for item in g:
+records_generator = source()
+for item in records_generator:
     print(item)
     break
 ```
@@ -347,8 +435,8 @@ Generator 何时被显式关闭、是否还保留引用，都会影响它自己�
 你可能见过：
 
 ```python
-with open("data.txt") as f:
-    text = f.read()
+with open("data.txt") as file:
+    text = file.read()
 ```
 
 脑内顺序：
@@ -366,6 +454,8 @@ with open("data.txt") as f:
 ```
 
 最小的 context manager 可以写成：
+
+下面的 `class` 语法只是把 `__enter__()` 与 `__exit__()` 两个相关方法放到同一种对象上，方便看清 Python 何时调用它们；本课练习使用更短的 `@contextmanager`，不要求你先学会手写这个 class。
 
 ```python
 class DemoContext:
@@ -542,7 +632,7 @@ with managed_records(source(), close_resource) as records:
 2. `iter([1, 2, 3])` 得到什么？
 3. `next(iterator)` 做什么？
 4. 谁保存“这次遍历已经走到哪里”的状态？
-5. `for x in values` 与 `iter()` / `next()` 有什么关系？
+5. `for item in values` 与 `iter()` / `next()` 有什么关系？
 6. generator function 与 generator object 有什么区别？
 7. 为什么调用 generator function 时函数体不会立刻跑完？
 8. 第一次执行到 `yield 1` 后，下一次从哪里恢复？
@@ -583,4 +673,8 @@ with managed_records(source(), close_resource) as records:
 4. 正常结束、提前停止、异常三条路径都必须 cleanup；
 5. cleanup 只发生一次。
 
-开始写代码前，先通读本课讲义，再打开本课目录下的 `practice.py` 动手实现。
+练习也可以分两步完成：先让 `source()` 与 `next()` 表现出按需读取，再加入 `managed_records()`，分别检查正常结束、提前停止与异常路径的 cleanup。
+
+---
+
+完成本课后：继续 [Lesson 01 — 函数被调用后，代码什么时候真正开始执行](../01_coroutine_and_await/01_coroutine_and_await.md)。

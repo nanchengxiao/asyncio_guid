@@ -2,11 +2,15 @@ import asyncio
 import time
 
 async def fetch_user(user_id):
+    print("[user] 开始")
     await asyncio.sleep(0.3)
+    print("[user] 结束")
     return {"id": user_id}
 
 async def fetch_orders(user_id):
+    print("[orders] 开始")
     await asyncio.sleep(0.3)
+    print("[orders] 结束")
     return [{"id": 101}]
 
 async def dashboard_sequential(user_id):
@@ -21,14 +25,18 @@ async def dashboard_concurrent(user_id):
     start = time.perf_counter()
     user_task = asyncio.create_task(fetch_user(user_id))
     orders_task = asyncio.create_task(fetch_orders(user_id))
-    user = await user_task        # 走到 await 才把执行机会交回 Event Loop
+    user = await user_task        # 本例 Task 未完成，所以这里暂停并交回执行机会
     orders = await orders_task
     return time.perf_counter() - start, {"user": user, "orders": orders}
 
 async def main():
-    seq_seconds, _ = await dashboard_sequential(1)
-    conc_seconds, result = await dashboard_concurrent(1)
-    print(result)
-    print(f"顺序等待 ≈ {seq_seconds:.2f}s；concurrency ≈ {conc_seconds:.2f}s")
+    print("=== 顺序等待 ===")
+    sequential_seconds, sequential_result = await dashboard_sequential(1)
+    print("=== concurrency ===")
+    concurrent_seconds, concurrent_result = await dashboard_concurrent(1)
+    print(f"两种写法的业务结果相同：{sequential_result == concurrent_result}")
+    print(concurrent_result)
+    print(f"顺序等待 ≈ {sequential_seconds:.2f}s；"
+          f"concurrency ≈ {concurrent_seconds:.2f}s")
 
 asyncio.run(main())

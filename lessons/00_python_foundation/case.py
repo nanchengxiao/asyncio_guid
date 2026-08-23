@@ -11,16 +11,16 @@ def close_resource():
     print("closed：resource 收尾")
 
 @contextmanager
-def managed_records(records, close_resource):
+def managed_records(records, cleanup_callback):
     try:
         yield iter(records)      # yield 前：进入阶段；yield 后：退出阶段
     finally:
-        close_resource()         # 无论正常结束还是抛异常，离开 with 都会收尾
+        cleanup_callback()       # 无论正常结束还是抛异常，离开 with 都会收尾
 
 def main():
-    g = source()
-    # g = source() 只是创建 generator object，函数体还没有运行
-    with managed_records(g, close_resource) as records:
+    records_generator = source()
+    # 调用 source() 只是创建 generator object，函数体还没有运行
+    with managed_records(records_generator, close_resource) as records:
         first = next(records)    # lazy：需要 1 条，只读取 1 条
         print(f"got {first}")
         # 不要在这里 list(records)：那会立即把剩余内容全部读完

@@ -1,41 +1,59 @@
 import asyncio
 
+class RecommendationsUnavailable(Exception):
+    """Recommendations 这条 optional dependency 的已知业务失败。"""
+
 async def fetch_user():
+    print("[user] 开始")
     await asyncio.sleep(0.1)
+    print("[user] 完成")
     return {"id": 7}
 
 async def fetch_orders():
+    print("[orders] 开始")
     await asyncio.sleep(0.15)
+    print("[orders] 完成")
     return [{"id": 101}, {"id": 102}]
 
-async def account_flow(user_task):
-    # edge：account 必须先拿到 user 的结果才能开始
-    user = await user_task
+async def fetch_account(user):
+    print("[account] user 已就绪，开始")
     await asyncio.sleep(0.1)
+    print("[account] 完成")
     return {"user_id": user["id"], "balance": 100}
 
-async def recommendations_flow(orders_task):
-    # edge：recommendations 必须先拿到 orders 的结果才能开始
-    orders = await orders_task
+async def fetch_recommendations(orders):
+    print(f"[recommendations] {len(orders)} 条 orders 已就绪，开始")
+    await asyncio.sleep(0.2)
+    raise RecommendationsUnavailable("推荐服务失败")
+
+async def user_account_branch():
+    """一条依赖链：user → account。"""
+    user = await fetch_user()
+    account = await fetch_account(user)       # edge：account 依赖 user
+    return user, account
+
+async def orders_recommendations_branch():
+    """另一条依赖链：orders → recommendations。"""
+    orders = await fetch_orders()
     try:
-        await asyncio.sleep(0.2)
-        raise RuntimeError("推荐服务失败")   # optional 依赖失败
-    except RuntimeError:
-        return None                          # degradation：允许缺少这部分结果
+        recommendations = await fetch_recommendations(orders)
+    except RecommendationsUnavailable:
+        print("[recommendations] optional 失败，执行 degradation")
+        recommendations = None                # degradation：允许缺少结果
+    return orders, recommendations
 
 async def aggregate():
     async with asyncio.TaskGroup() as tg:
-        # 第一层：user 与 orders 只共享输入，彼此无依赖，尽早同时开始
-        user_task = tg.create_task(fetch_user())
-        orders_task = tg.create_task(fetch_orders())
-        # 第二层：各自等到前置结果准备好才开始，互不等待对方
-        account_task = tg.create_task(account_flow(user_task))
-        recommendations_task = tg.create_task(recommendations_flow(orders_task))
+        # 两条独立依赖链同时开始；每条链内部用 await 表达自己的 edge
+        user_branch = tg.create_task(user_account_branch())
+        orders_branch = tg.create_task(orders_recommendations_branch())
+    user, account = user_branch.result()
+    orders, recommendations = orders_branch.result()
     return {
-        "user": user_task.result(),                      # required
-        "orders": orders_task.result(),                  # required
-        "account": account_task.result(),                # required
-        "recommendations": recommendations_task.result(),# optional
+        "user": user,                            # required
+        "orders": orders,                        # required
+        "account": account,                      # required
+        "recommendations": recommendations,      # optional
     }
 
 async def main():
