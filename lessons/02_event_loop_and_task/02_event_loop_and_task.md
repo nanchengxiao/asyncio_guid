@@ -171,36 +171,15 @@ orders Task:                  └─ run ─ wait I/O .... finish
 
 ## 关键问题
 
-1. coroutine object 与 Task 最大的区别是什么？  协程对象被creat_task() 包裹后才是一个Task，事件循环才能知道：哦！这个对象现在可以被我调度！
-2. Event Loop 的核心职责是什么？  调度Task
-3. concurrency 在本课中的白话含义是什么？  并发，其实就是让一些Task运行到需要等待的时候，事件循环可以调度其他Task，尽量让不同Task能重叠等待时间。
-4. 为什么 `await fetch_user(); await fetch_orders()` 通常仍是顺序等待？  因为数据依赖，`fetch_orders`得拿到`fetch_user`返回的数据才能真正开始，不然交不出去调度，事件循环到这里就会卡住，所以跟串行没啥区别。
-5. `create_task()` 后，新 Task 最早什么时候有机会真正运行？  代码执行顺序按行，执行到这行：asynio.run(那个Task)时.
-6. 为什么 Event Loop 不能解决一段长时间不暂停的普通 Python 计算？  这时这个“普通 Python 计算” 自己占用一个线程。Event Loop 自己是另外一个线程。
+1. coroutine object 与 Task 最大的区别是什么？
+2. Event Loop 的核心职责是什么？
+3. concurrency 在本课中的白话含义是什么？
+4. 为什么 `await fetch_user(); await fetch_orders()` 通常仍是顺序等待？
+5. `create_task()` 后，新 Task 最早什么时候有机会真正运行？
+6. 为什么 Event Loop 不能解决一段长时间不暂停的普通 Python 计算？
 
 ## 场景命题
 
 一个页面同时需要 user 与 orders。两份数据只共享同一个 `user_id`，彼此没有 data dependency。
 
 请把不必要的顺序等待改成真正 concurrency，并保证函数返回前自己创建的两份工作都已经结束。
-
-## 验收
-
-测试会使用可控等待时间验证：
-
-- user 与 orders 结果正确；
-- 两段等待确实发生重叠；
-- 总耗时明显低于顺序等待；
-- 函数返回时没有遗留本场景创建的工作。
-
-仓库参考实现：
-
-```bash
-uv run pytest lessons/02_event_loop_and_task/tests -v
-```
-
-完成 starter 后：
-
-```bash
-uv run pytest lessons/02_event_loop_and_task/tests -v --learner
-```

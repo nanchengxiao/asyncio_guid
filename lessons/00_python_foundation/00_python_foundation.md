@@ -583,37 +583,4 @@ with managed_records(source(), close_resource) as records:
 4. 正常结束、提前停止、异常三条路径都必须 cleanup；
 5. cleanup 只发生一次。
 
-开始写代码前，请阅读：
-
-```text
-lessons/00_python_foundation/practice/README.md
-```
-
-## 验收
-
-先运行本课实验，观察执行顺序：
-
-```bash
-uv run python lessons/00_python_foundation/experiments.py
-```
-
-仓库参考实现：
-
-```bash
-uv run pytest lessons/00_python_foundation/tests -v
-```
-
-完成自己的 starter 后：
-
-```bash
-uv run pytest lessons/00_python_foundation/tests -v --learner
-```
-
-测试观察的是具体行为：
-
-- 进入 `with` 时不能提前读取数据；
-- 调一次 `next()` 只读取下一条；
-- 正常退出时执行 cleanup；
-- 调用方只读一条后退出 `with` 也执行 cleanup；
-- `with` 代码块抛异常时仍执行 cleanup；
-- `close_resource()` 只调用一次。
+开始写代码前，先通读本课讲义，再打开本课目录下的 `practice.py` 动手实现。

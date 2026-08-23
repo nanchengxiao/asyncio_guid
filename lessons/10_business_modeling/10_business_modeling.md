@@ -238,7 +238,7 @@ resource 是否还有容量？
 
 ## 场景命题
 
-先填写 `practice/DESIGN.md`，再实现 `Async Service Aggregator`。
+实现一个 `Async Service Aggregator`。
 
 这个练习名表示“用 async 方式从多个来源取得数据并组合结果的 service”。
 
@@ -257,26 +257,3 @@ resource 是否还有容量？
 - optional 依赖失败可以 degradation；
 - required 依赖失败继续向外报告；
 - 调用者的 cancellation 不能被 optional 处理吞掉。
-
-## 验收
-
-测试会验证：
-
-- DAG 启动顺序正确；
-- 第一层等待确实重叠；
-- 第二层遵守各自 dependency；
-- optional 依赖失败被正确隔离；
-- required 依赖失败正确向外报告；
-- Task lifecycle 没有越过业务 owner 边界。
-
-仓库参考实现：
-
-```bash
-uv run pytest lessons/10_business_modeling/tests -v
-```
-
-完成 starter 后：
-
-```bash
-uv run pytest lessons/10_business_modeling/tests -v --learner
-```

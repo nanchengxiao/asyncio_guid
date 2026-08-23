@@ -243,25 +243,3 @@ source 暂时不再继续读
 实现一个 producer → bounded Queue → 固定数量 worker 的 pipeline。
 
 数据源很快时，producer 必须被 Queue 的 backpressure 限制，不能提前把所有 job 读进内存。
-
-## 验收
-
-测试会确认：
-
-- 所有 job 恰好处理一次；
-- producer 的领先量有明确上界；
-- Queue 满时 producer 确实等待；
-- worker 能在没有新工作后干净退出；
-- 没有通过“先把全部数据源读进内存”绕过 backpressure。
-
-仓库参考实现：
-
-```bash
-uv run pytest lessons/07_queue_and_backpressure/tests -v
-```
-
-完成 starter 后：
-
-```bash
-uv run pytest lessons/07_queue_and_backpressure/tests -v --learner
-```

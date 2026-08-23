@@ -171,24 +171,3 @@ Task：   工作 ─ await .... CancelledError ─ finally cleanup ─ 结束
 实现分片上传：逐块等待发送。
 
 无论正常完成还是收到 cancellation，都必须执行 cleanup；如果上传被取消，不能把结果伪装成“成功完成”。
-
-## 验收
-
-测试会在上传进行中调用 `cancel()`，并确认：
-
-- cleanup 恰好执行一次；
-- Task 最终停止；
-- 调用者仍然能看到 `CancelledError`；
-- cancellation 没有被转换成普通成功。
-
-仓库参考实现：
-
-```bash
-uv run pytest lessons/04_cancellation/tests -v
-```
-
-完成 starter 后：
-
-```bash
-uv run pytest lessons/04_cancellation/tests -v --learner
-```

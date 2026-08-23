@@ -178,24 +178,3 @@ await 一个 Awaitable    = 等待并推进它直到得到结果
 一个订单上下文需要先获取 order，再使用其中的 `customer_id` 获取 customer。
 
 请保持真实的 data dependency：先拿到 order，再开始 customer 查询。不要为了“看起来更复杂”而提前开始一个还缺少必要输入的工作。
-
-## 验收
-
-测试会验证：
-
-- 创建 coroutine object 不会提前触发业务调用；
-- order 查询先完成；
-- customer 查询只能在拿到 `customer_id` 后开始；
-- 最终返回 `{order, customer}`。
-
-仓库参考实现：
-
-```bash
-uv run pytest lessons/01_coroutine_and_await/tests -v
-```
-
-完成 starter 后：
-
-```bash
-uv run pytest lessons/01_coroutine_and_await/tests -v --learner
-```

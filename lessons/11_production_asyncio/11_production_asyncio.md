@@ -383,7 +383,7 @@ attempt
 
 ## 场景命题
 
-先填写 `practice/DESIGN.md`，再实现 `Job Processing Service`。
+实现一个 `Job Processing Service`。
 
 这个练习名表示“持续接收 job、处理并保存结果的 service”。
 
@@ -399,29 +399,3 @@ attempt
 - writer concurrency limit；
 - graceful shutdown + drain；
 - structured logging 与 metrics。
-
-## 验收
-
-测试会覆盖：
-
-- 重复 job 不重复产生 side effect；
-- transient failure 只在允许条件下有限 retry；
-- 每个 attempt 有 timeout；
-- API active peak 不超过 concurrency limit；
-- attempt 启动间隔符合 rate limit；
-- writer active peak 不超过 writer limit；
-- shutdown 时已接收工作完成 drain；
-- 最终 metrics 正确；
-- 测试不依赖外部系统。
-
-仓库参考实现：
-
-```bash
-uv run pytest lessons/11_production_asyncio/tests -v
-```
-
-完成 starter 后：
-
-```bash
-uv run pytest lessons/11_production_asyncio/tests -v --learner
-```

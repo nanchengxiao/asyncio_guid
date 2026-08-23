@@ -203,24 +203,3 @@ J3 ─ 准备 ─ 等待通行证 ─ [占用 resource]
 批量调用一个容量有限的 downstream。
 
 输入可以很多，但同一时间进入 `fetch_one` 的调用不能超过 `limit`；当 `limit > 1` 时，也不能退化成完全按顺序一个一个执行。
-
-## 验收
-
-测试会记录 active / peak 计数，并确认：
-
-- 所有结果正确；
-- peak 不超过 `limit`；
-- `limit > 1` 时确实保留 concurrency；
-- 限制发生在真正的 downstream 调用区域。
-
-仓库参考实现：
-
-```bash
-uv run pytest lessons/06_bounded_concurrency/tests -v
-```
-
-完成 starter 后：
-
-```bash
-uv run pytest lessons/06_bounded_concurrency/tests -v --learner
-```
