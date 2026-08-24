@@ -19,7 +19,7 @@ def managed_records(records, cleanup_callback):
 
 def main():
     records_generator = source()
-    # 调用 source() 只是创建 generator object，函数体还没有运行
+    # 调用 source() 只是创建 generator object（生成器对象），函数体还没有运行
     with managed_records(records_generator, close_resource) as records:
         first = next(records)    # lazy：需要 1 条，只读取 1 条
         print(f"got {first}")

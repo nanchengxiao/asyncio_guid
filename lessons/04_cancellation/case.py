@@ -20,7 +20,7 @@ async def upload_with_log():
         await upload()
     except asyncio.CancelledError:
         print("中间层记录 cancellation，然后继续传播")
-        raise                              # 重新抛出同一个 cancellation
+        raise                              # 重新抛出当前捕获的 CancelledError，让取消继续向上传播
 
 async def main():
     task = asyncio.create_task(upload_with_log())

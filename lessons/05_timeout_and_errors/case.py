@@ -26,6 +26,7 @@ async def failing_worker(name):
     raise RuntimeError(f"{name} 失败")
 
 async def collect_errors():
+    """收集errors，两个任务同时失败时，如何把多个错误一起保留下来，而不是只处理第一个。"""
     errors = []
     try:
         async with asyncio.TaskGroup() as tg:

@@ -50,6 +50,7 @@ async def failing_worker(name):
     raise RuntimeError(f"{name} 失败")
 
 async def collect_errors():
+    """两个任务同时失败时，如何把多个错误一起保留下来，而不是只处理第一个。"""
     errors = []
     try:
         async with asyncio.TaskGroup() as tg:
@@ -76,20 +77,20 @@ asyncio.run(main())
 
 把本课知识点对到代码上：
 
-| 术语或知识点 | 在这个例子里指什么 |
-| --- | --- |
-| **operation** | `page_data()` 是一次组装页面数据的完整业务操作；`collect_errors()` 是另一个独立演示 |
-| **timeout** | 推荐查询等待超过 0.2 秒后，页面不再继续等到它原本的 0.5 秒 |
-| **time budget** | Required 订单和 optional 推荐各自有独立的 0.2 秒预算；相同数字不表示它们共享同一个计时范围 |
-| **`asyncio.timeout()`** | 两个独立的 `async with asyncio.timeout(0.2)` 分别建立各自的等待边界 |
-| **`TimeoutError`** | 时间用完后在边界外被 `except TimeoutError` 捕获 |
-| **required dependency** | 订单查询也有 0.2 秒 time budget，但外层没有把它转换成降级结果；失败或 timeout 都继续报告 |
-| **optional dependency** | Recommendations 业务上允许缺失；这个最小例子只把它的 `TimeoutError` 分类为可降级，其他未知失败仍会向外报告 |
-| **degradation** | 捕获明确允许的 `TimeoutError` 后令 `recommendations = None`，表示功能减少但订单页面仍然返回 |
-| **data dependency** | `fetch_recommendations(orders)` 必须使用先取得的订单，因此这里顺序 `await` 符合业务依赖 |
-| **`ExceptionGroup`** | 两个 sibling 的 `RuntimeError` 由 `TaskGroup` 组合后向外报告；代码不需要手动创建它 |
-| **`except*`** | `except* RuntimeError as group` 从异常组中匹配所有 `RuntimeError`，而不是只取第一个 |
-| **retry** | 这个例子刻意没有 retry；推荐 timeout 后直接 degradation，说明 timeout 不会自动触发重试 |
+| 术语或知识点                    | 在这个例子里指什么                                                                                          |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| **operation**             | `page_data()` 是一次组装页面数据的完整业务操作；`collect_errors()` 是另一个独立演示                     |
+| **timeout**               | 推荐查询等待超过 0.2 秒后，页面不再继续等到它原本的 0.5 秒                                                  |
+| **time budget**           | Required 订单和 optional 推荐各自有独立的 0.2 秒预算；相同数字不表示它们共享同一个计时范围                  |
+| **`asyncio.timeout()`** | 两个独立的`async with asyncio.timeout(0.2)` 分别建立各自的等待边界                                        |
+| **`TimeoutError`**      | 时间用完后在边界外被`except TimeoutError` 捕获                                                            |
+| **required dependency**   | 订单查询也有 0.2 秒 time budget，但外层没有把它转换成降级结果；失败或 timeout 都继续报告                    |
+| **optional dependency**   | Recommendations 业务上允许缺失；这个最小例子只把它的`TimeoutError` 分类为可降级，其他未知失败仍会向外报告 |
+| **degradation**           | 捕获明确允许的`TimeoutError` 后令 `recommendations = None`，表示功能减少但订单页面仍然返回              |
+| **data dependency**       | `fetch_recommendations(orders)` 必须使用先取得的订单，因此这里顺序 `await` 符合业务依赖                 |
+| **`ExceptionGroup`**    | 两个 sibling 的`RuntimeError` 由 `TaskGroup` 组合后向外报告；代码不需要手动创建它                       |
+| **`except*`**           | `except* RuntimeError as group` 从异常组中匹配所有 `RuntimeError`，而不是只取第一个                     |
+| **retry**                 | 这个例子刻意没有 retry；推荐 timeout 后直接 degradation，说明 timeout 不会自动触发重试                      |
 
 按时间线分两段读取：
 
@@ -232,19 +233,11 @@ optional 依赖失败 → 可以选择 degradation
 
 ## 常见误解
 
-- **误区：** timeout 与 cancellation 完全无关。  
-  **更准确：** `asyncio.timeout()` 内部会借助 cancellation 停止等待，但对调用者表达的是 time budget 耗尽。
-
-- **误区：** 超时就一定应该 retry。  
-  **更准确：** retry 需要单独判断失败类型和重复执行是否安全。
-
-- **误区：** `ExceptionGroup` 只需要打印。  
-  **更准确：** 它让多个同时发生的失败可以被一起保留和分类。
-
-- **误区：** optional dependency 失败必须让整个 operation 失败。  
-  **更准确：** required / optional 是业务规则。
-
-- **误区：** optional 就等于吞掉异常。  
+- **误区：** timeout 与 cancellation 完全无关。**更准确：** `asyncio.timeout()` 内部会借助 cancellation 停止等待，但对调用者表达的是 time budget 耗尽。
+- **误区：** 超时就一定应该 retry。**更准确：** retry 需要单独判断失败类型和重复执行是否安全。
+- **误区：** `ExceptionGroup` 只需要打印。**更准确：** 它让多个同时发生的失败可以被一起保留和分类。
+- **误区：** optional dependency 失败必须让整个 operation 失败。**更准确：** required / optional 是业务规则。
+- **误区：** optional 就等于吞掉异常。
   **更准确：** degradation 也必须明确哪些失败可以被隔离。
 
 ## 本节规则总结

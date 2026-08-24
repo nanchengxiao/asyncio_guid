@@ -19,7 +19,7 @@
 
 ## 一个例子串起全部术语
 
-下面一次创建 10 个 job，但 downstream 同一时刻只允许 3 份工作真正进入。除了限制数量，代码还主动记录真实 active concurrency 的 peak，证明限制确实生效。代码就是本课的 `case.py`：
+下面一次创建 10 个 job，但 downstream 同一时刻只允许 3 份工作真正进入。除了限制数量，代码还主动记录真实 active concurrency 的 peak，证明限制确实生效。以下代码就是本课的 `case.py`：
 
 ```python
 import asyncio
@@ -64,19 +64,19 @@ active concurrency 峰值 peak = 3（limit = 3）
 
 把本课知识点对到代码上：
 
-| 术语或知识点 | 在这个例子里指什么 |
-| --- | --- |
-| **job** | `range(10)` 中每个 `item` 对应一条独立处理工作 |
-| **bounded concurrency** | 10 份 Task 都可以存在，但同一时刻最多 3 份进入 `call_downstream()` |
-| **active concurrency** | `stats["active"]` 记录此刻已经取得通行证、正在调用 downstream 的工作数 |
-| **concurrency limit** | `LIMIT = 3` 是 active concurrency 允许达到的上限 |
-| **Semaphore** | `main()` 创建的 `semaphore` 提供 3 张通行证；`async with semaphore` 自动取得并归还 |
-| **downstream** | `call_downstream()` 模拟当前程序要调用的有限外部 resource |
-| **backlog** | 已创建但还在 `async with semaphore` 前等待通行证的 Task；它没有被 Semaphore 消除 |
-| **peak** | `stats["peak"]` 保存运行期间实际观察到的 active 最大值 |
-| **ownership 与 cleanup** | Semaphore 和观测状态由本次 `main()` 创建；`finally` 保证失败或 cancellation 时也把 active 计数减回去 |
-| **rate limit** | 本例没有实现 rate limit；它只限制“同时有几个”，没有限制“每秒新启动几个” |
-| **`task.result()`** | 只在 `TaskGroup` 已正常退出后读取每个 Task 的结果，因此这些 Task 已经结束且没有失败 |
+| 术语或知识点                   | 在这个例子里指什么                                                                                      |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------- |
+| **job**                  | `range(10)` 中每个 `item` 对应一条独立处理工作                                                      |
+| **bounded concurrency**  | 10 份 Task 都可以存在，但同一时刻最多 3 份进入`call_downstream()`                                     |
+| **active concurrency**   | `stats["active"]` 记录此刻已经取得通行证、正在调用 downstream 的工作数                                |
+| **concurrency limit**    | `LIMIT = 3` 是 active concurrency 允许达到的上限                                                      |
+| **Semaphore**            | `main()` 创建的 `semaphore` 提供 3 张通行证；`async with semaphore` 自动取得并归还                |
+| **downstream**           | `call_downstream()` 模拟当前程序要调用的有限外部 resource                                             |
+| **backlog**              | 已创建但还在`async with semaphore` 前等待通行证的 Task；它没有被 Semaphore 消除                       |
+| **peak**                 | `stats["peak"]` 保存运行期间实际观察到的 active 最大值                                                |
+| **ownership 与 cleanup** | Semaphore 和观测状态由本次`main()` 创建；`finally` 保证失败或 cancellation 时也把 active 计数减回去 |
+| **rate limit**           | 本例没有实现 rate limit；它只限制“同时有几个”，没有限制“每秒新启动几个”                             |
+| **`task.result()`**    | 只在`TaskGroup` 已正常退出后读取每个 Task 的结果，因此这些 Task 已经结束且没有失败                    |
 
 按时间线读输出：
 
@@ -233,19 +233,11 @@ J3 ─ 准备 ─ 等待通行证 ─ [占用 resource]
 
 ## 常见误解
 
-- **误区：** `Semaphore` 越小越安全。  
-  **更准确：** 太小也会浪费 downstream 本来可以承受的容量。
-
-- **误区：** 创建很多 Task 再加 `Semaphore`，程序就完全有界。  
-  **更准确：** active concurrency 有界，但 backlog 仍可能很大。
-
-- **误区：** concurrency limit 就是“每秒请求数”。  
-  **更准确：** 前者控制同一时刻正在进行多少调用；rate limit 控制单位时间启动多少调用。
-
-- **误区：** Semaphore 应该包住整个 worker。  
-  **更准确：** 它应该尽量只包围真正消耗稀缺 resource 的部分。
-
-- **误区：** 测试只要搜索到 `Semaphore` 就能证明行为正确。  
+- **误区：** `Semaphore` 越小越安全。**更准确：** 太小也会浪费 downstream 本来可以承受的容量。
+- **误区：** 创建很多 Task 再加 `Semaphore`，程序就完全有界。**更准确：** active concurrency 有界，但 backlog 仍可能很大。
+- **误区：** concurrency limit 就是“每秒请求数”。**更准确：** 前者控制同一时刻正在进行多少调用；rate limit 控制单位时间启动多少调用。
+- **误区：** Semaphore 应该包住整个 worker。**更准确：** 它应该尽量只包围真正消耗稀缺 resource 的部分。
+- **误区：** 测试只要搜索到 `Semaphore` 就能证明行为正确。
   **更准确：** 应观察真实 peak。
 
 ## 本节规则总结
